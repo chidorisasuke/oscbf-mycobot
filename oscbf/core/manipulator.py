@@ -760,10 +760,24 @@ def load_panda() -> Manipulator:
         collision_data=franka_collision_data,
     )
 
+def load_mycobot() -> Manipulator:
+    """Create a Manipulator object for the Mycobot"""
+
+    return Manipulator.from_urdf(
+        "oscbf/assets/mycobot/mycobot_urdf.urdf",
+        ee_offset=np.block(
+            [
+                [np.eye(3), np.reshape(np.array([0.0, 0.0, 0.216]), (-1, 1))],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+        collision_data=franka_collision_data,
+    )
 
 def main():
     # Quick validation that the manipulator class works
-    robot = load_panda()
+    # robot = load_panda()
+    robot = load_mycobot()
     q = jnp.zeros(robot.num_joints)
     qdot = 0.1 * jnp.ones(robot.num_joints)
     np.set_printoptions(precision=3, suppress=True)

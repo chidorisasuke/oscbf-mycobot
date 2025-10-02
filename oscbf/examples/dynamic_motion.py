@@ -17,8 +17,9 @@ from jax.typing import ArrayLike
 
 
 from cbfpy import CBF
-from oscbf.core.manipulator import Manipulator, load_panda
-from oscbf.core.manipulation_env import FrankaTorqueControlEnv, FrankaVelocityControlEnv
+from oscbf.core.manipulator import Manipulator, load_panda, load_mycobot
+# from oscbf.core.manipulation_env import FrankaTorqueControlEnv, FrankaVelocityControlEnv
+from oscbf.core.manipulation_env import MyCobotTorqueControlEnv, MyCobotVelocityControlEnv
 from oscbf.core.oscbf_configs import OSCBFTorqueConfig, OSCBFVelocityConfig
 from oscbf.utils.trajectory import SinusoidalTaskTrajectory
 from oscbf.core.controllers import (
@@ -97,7 +98,19 @@ def compute_torque_control(
     if not compensate_centrifugal_coriolis:
         c = jnp.zeros(robot.num_joints)
 
-    # Set nullspace desired joint position
+    # Set nullspace desired joint position panda.urdf
+    # nullspace_posture_goal = jnp.array(
+    #     [
+    #         0.0,
+    #         -jnp.pi / 6,
+    #         0.0,
+    #         -3 * jnp.pi / 4,
+    #         0.0,
+    #         5 * jnp.pi / 9,
+    #         0.0,
+    #     ]
+    # )
+
     nullspace_posture_goal = jnp.array(
         [
             0.0,
@@ -106,7 +119,6 @@ def compute_torque_control(
             -3 * jnp.pi / 4,
             0.0,
             5 * jnp.pi / 9,
-            0.0,
         ]
     )
 
@@ -150,7 +162,18 @@ def compute_velocity_control(
     des_rot = jnp.reshape(z_ee_des[3:12], (3, 3))
     des_vel = z_ee_des[12:15]
     des_omega = z_ee_des[15:18]
-    # Set nullspace desired joint position
+    # Set nullspace desired joint position panda.urdf
+    # des_q = jnp.array(
+    #     [
+    #         0.0,
+    #         -jnp.pi / 6,
+    #         0.0,
+    #         -3 * jnp.pi / 4,
+    #         0.0,
+    #         5 * jnp.pi / 9,
+    #         0.0,
+    #     ]
+    # )
     des_q = jnp.array(
         [
             0.0,
@@ -159,7 +182,6 @@ def compute_velocity_control(
             -3 * jnp.pi / 4,
             0.0,
             5 * jnp.pi / 9,
-            0.0,
         ]
     )
     u_nom = osc_controller(
@@ -171,9 +193,16 @@ def compute_velocity_control(
 def main(control_method="torque"):
     assert control_method in ["torque", "velocity"]
 
-    robot = load_panda()
-    pos_min = (0.25, -0.25, 0.25)
-    pos_max = (0.65, 0.25, 0.65)
+    robot = load_mycobot()
+    # pos untuk Franka
+    # pos_min = (0.25, -0.25, 0.25)
+    # pos_max = (0.65, 0.25, 0.65)
+
+    pos_min = (0.10, -0.05, 0.1)
+    pos_max = (0.45, 0.15, 0.3)
+
+    # Buat variabel q_init dengan 6 elemen
+    mycobot_q_init = (0, 0, 0, 0, 0, 0) # Ganti dengan posisi awal yang aman
 
     # NOTE: This term has a noticeable impact on the performance for this demo.
     # It's often neglected due to computational demands and model error
@@ -189,7 +218,8 @@ def main(control_method="torque"):
     velocity_config = EESafeSetVelocityConfig(robot, pos_min, pos_max)
     velocity_cbf = CBF.from_config(velocity_config)
     traj = SinusoidalTaskTrajectory(
-        init_pos=(0.55, 0, 0.45),
+        # init_pos=(0.55, 0, 0.45), #Franka
+        init_pos=(0.2, 0, 0.15),
         init_rot=np.array(
             [
                 [1, 0, 0],
@@ -197,16 +227,19 @@ def main(control_method="torque"):
                 [0, 0, -1],
             ]
         ),
-        amplitude=(0.25, 0, 0),
+        # amplitude=(0.25, 0, 0), #Franka
+        amplitude=(0.05, 0, 0),
         angular_freq=(5, 0, 0),
         phase=(0, 0, 0),
     )
     timestep = 1 / 1000
     bg_color = (1, 1, 1)
     if control_method == "torque":
-        env = FrankaTorqueControlEnv(
+        # env = FrankaTorqueControlEnv
+        env = MyCobotTorqueControlEnv(
             torque_config.pos_min,
             torque_config.pos_max,
+            q_init=mycobot_q_init,
             traj=traj,
             real_time=True,
             bg_color=bg_color,
@@ -214,7 +247,8 @@ def main(control_method="torque"):
             timestep=timestep,
         )
     else:
-        env = FrankaVelocityControlEnv(
+        # env = FrankaVelocityControlEnv
+        env = MyCobotVelocityControlEnv(
             velocity_config.pos_min,
             velocity_config.pos_max,
             traj=traj,
@@ -231,12 +265,19 @@ def main(control_method="torque"):
         cameraTargetPosition=(0.44, 0.16, 0.28),
     )
 
-    kp_pos = 50.0
-    kp_rot = 20.0
-    kd_pos = 20.0
-    kd_rot = 10.0
-    kp_joint = 10.0
-    kd_joint = 5.0
+    # Franka
+    # kp_pos = 50.0
+    # kp_rot = 20.0
+    # kd_pos = 20.0
+    # kd_rot = 10.0
+    # kp_joint = 10.0
+    # kd_joint = 5.0
+    kp_pos = 5.0
+    kp_rot = 2.0
+    kd_pos = 2.0
+    kd_rot = 1.0
+    kp_joint = 1.0
+    kd_joint = 0.5
     osc_torque_controller = PoseTaskTorqueController(
         n_joints=robot.num_joints,
         kp_task=np.concatenate([kp_pos * np.ones(3), kp_rot * np.ones(3)]),

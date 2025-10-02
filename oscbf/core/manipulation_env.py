@@ -4,7 +4,6 @@ import time
 from typing import Optional, Dict, Tuple
 from functools import partial
 import argparse
-
 import jax
 from jax import Array
 import jax.numpy as jnp
@@ -80,6 +79,7 @@ class ManipulationEnv:
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
         self.robot = self.client.loadURDF(
             urdf,
+            basePosition=[0.5, 0, 0.085],
             useFixedBase=True,
             flags=self.client.URDF_USE_INERTIA_FROM_FILE
             | self.client.URDF_MERGE_FIXED_LINKS,
@@ -174,9 +174,9 @@ class ManipulationEnv:
                 for i in range(-1, self.num_joints + 1):
                     self.client.setCollisionFilterPair(self.robot, self.table, i, -1, 0)
             # Add a stand for the robot
-            self.robot_stand_id = visualize_3D_box(
-                np.asarray([(-0.2, -0.1, -0.35), (0.1, 0.1, 0)]), rgba=(1, 1, 1, 1)
-            )
+            # self.robot_stand_id = visualize_3D_box(
+            #     np.asarray([(-0.2, -0.1, -0.35), (0.1, 0.1, 0)]), rgba=(1, 1, 1, 1)
+            # )
 
         # Set initial joint positions if provided
         if q_init is not None:
@@ -312,6 +312,83 @@ class ManipulationEnv:
             time.sleep(max(0, self.dt - (time.time() - self.last_time)))
             self.last_time = time.time()
 
+class MyCobotTorqueControlEnv(ManipulationEnv):
+    """Simulation environment for Mycobot end-effector pose tracking, with torque control"""
+
+    def __init__(
+        self,
+        xyz_min=None,
+        xyz_max=None,
+        target_pos=(0.2, 0, 0.2), #Perlu disesuaikan target awal
+        q_init=(0, 0, 0, 0, 0, 0), #6 Elemen
+        traj=None,
+        collision_data=None,
+        wb_xyz_min=None,
+        wb_xyz_max=None,
+        bg_color=None,
+        load_floor=True,
+        real_time=False,
+        timestep=1 / 240, 
+        load_table=False,
+    ):
+        super().__init__(
+            "oscbf/assets/mycobot/mycobot_urdf.urdf",
+            "torque",
+            xyz_min,
+            xyz_max,
+            target_pos,
+            q_init,
+            traj,
+            collision_data,
+            wb_xyz_min,
+            wb_xyz_max,
+            bg_color,
+            load_floor,
+            qdot_max=np.array((2.5, 2.5, 2.5, 2.5, 2.5, 2.5)),
+            tau_max=np.array((10.0, 10.0, 10.0, 10.0, 10.0, 10.0)),
+            real_time=real_time,
+            timestep=timestep,
+            load_table=load_table,
+        )
+
+class MyCobotVelocityControlEnv(ManipulationEnv):
+    """Simulation environment for Mycobot end-effector pose tracking, with torque control"""
+
+    def __init__(
+        self,
+        xyz_min=None,
+        xyz_max=None,
+        target_pos=(0.2, 0, 0.2), #Perlu disesuaikan target awal
+        q_init=(0, 0, 0, 0, 0, 0), #6 Elemen
+        traj=None,
+        collision_data=None,
+        wb_xyz_min=None,
+        wb_xyz_max=None,
+        bg_color=None,
+        load_floor=True,
+        real_time=False,
+        timestep=1 / 240, 
+        load_table=False,
+    ):
+        super().__init__(
+            "oscbf/assets/mycobot/mycobot_urdf.urdf",
+            "velocity",
+            xyz_min,
+            xyz_max,
+            target_pos,
+            q_init,
+            traj,
+            collision_data,
+            wb_xyz_min,
+            wb_xyz_max,
+            bg_color,
+            load_floor,
+            qdot_max=np.array((2.5, 2.5, 2.5, 2.5, 2.5, 2.5)),
+            tau_max=np.array((10.0, 10.0, 10.0, 10.0, 10.0, 10.0)),
+            real_time=real_time,
+            timestep=timestep,
+            load_table=load_table,
+        )
 
 class FrankaTorqueControlEnv(ManipulationEnv):
     """Simulation environment for Franka end-effector pose tracking, with torque control"""
@@ -331,6 +408,7 @@ class FrankaTorqueControlEnv(ManipulationEnv):
         real_time=False,
         timestep=1 / 240,
         load_table=False,
+
     ):
         super().__init__(
             "oscbf/assets/franka_panda/panda.urdf",
