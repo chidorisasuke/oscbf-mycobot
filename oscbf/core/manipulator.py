@@ -10,6 +10,7 @@ import numpy as np
 
 from oscbf.utils.urdf_parser import parse_urdf
 from oscbf.core.franka_collision_model import franka_collision_data
+from oscbf.core.myco_collision_model import mycobot_collision_data
 
 
 def tuplify(arr):
@@ -771,7 +772,7 @@ def load_mycobot() -> Manipulator:
                 [0.0, 0.0, 0.0, 1.0],
             ]
         ),
-        collision_data=franka_collision_data,
+        collision_data=mycobot_collision_data,
     )
 
 def main():

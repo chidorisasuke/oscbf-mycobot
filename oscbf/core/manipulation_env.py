@@ -49,6 +49,7 @@ class ManipulationEnv:
     def __init__(
         self,
         urdf: str,
+        robot_name: str,
         control_mode: str,
         xyz_min: Optional[ArrayLike] = None,
         xyz_max: Optional[ArrayLike] = None,
@@ -68,6 +69,7 @@ class ManipulationEnv:
     ):
         assert isinstance(urdf, str)
         self.urdf = urdf
+        self.robot_name = robot_name
         assert control_mode in ["torque", "velocity"]
         self.control_mode = control_mode
         assert isinstance(traj, TaskTrajectory) or traj is None
@@ -77,9 +79,24 @@ class ManipulationEnv:
         assert isinstance(timestep, float) and timestep > 0
         self.client.setTimeStep(timestep)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
+        if self.robot_name == "franka":
+            base_pos = [0, 0, 0]
+            if load_table:
+                self.robot_stand_id = visualize_3D_box(
+                    np.asarray([(-0.2, -0.1, -0.35), (0.1, 0.1, 0)]), rgba=(0.8, 0.8, 0.8, 1)
+                )
+        elif self.robot_name == "mycobot":
+            base_pos = [0.1, 0, 0.15]
+            if load_table:
+                self.robot_stand_id = visualize_3D_box(
+                    np.asarray([(-0.15, -0.15, -0.35), (0.15, 0.15, 0.15)]), rgba=(0.8, 0.8, 0.8, 1)
+                )
+        else:
+            base_pos = [0, 0, 0]
+        
         self.robot = self.client.loadURDF(
             urdf,
-            basePosition=[0.5, 0, 0.085],
+            basePosition=base_pos,
             useFixedBase=True,
             flags=self.client.URDF_USE_INERTIA_FROM_FILE
             | self.client.URDF_MERGE_FIXED_LINKS,
@@ -333,6 +350,7 @@ class MyCobotTorqueControlEnv(ManipulationEnv):
     ):
         super().__init__(
             "oscbf/assets/mycobot/mycobot_urdf.urdf",
+            "mycobot",
             "torque",
             xyz_min,
             xyz_max,
@@ -372,6 +390,7 @@ class MyCobotVelocityControlEnv(ManipulationEnv):
     ):
         super().__init__(
             "oscbf/assets/mycobot/mycobot_urdf.urdf",
+            "mycobot",
             "velocity",
             xyz_min,
             xyz_max,
@@ -412,6 +431,7 @@ class FrankaTorqueControlEnv(ManipulationEnv):
     ):
         super().__init__(
             "oscbf/assets/franka_panda/panda.urdf",
+            "franka",
             "torque",
             xyz_min,
             xyz_max,
@@ -452,6 +472,7 @@ class FrankaVelocityControlEnv(ManipulationEnv):
     ):
         super().__init__(
             "oscbf/assets/franka_panda/panda.urdf",
+            "franka",
             "velocity",
             xyz_min,
             xyz_max,

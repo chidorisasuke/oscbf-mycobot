@@ -21,7 +21,7 @@ from cbfpy import CBF
 from oscbf.core.manipulator import Manipulator, load_mycobot
 from oscbf.core.manipulation_env import MyCobotTorqueControlEnv, MyCobotVelocityControlEnv
 from oscbf.core.oscbf_configs import OSCBFTorqueConfig, OSCBFVelocityConfig
-from oscbf.utils.trajectory import SinusoidalTaskTrajectory
+# from oscbf.utils.trajectory import SinusoidalTaskTrajectory
 from oscbf.core.controllers import (
     PoseTaskTorqueController,
     PoseTaskVelocityController,
@@ -169,8 +169,8 @@ def main(control_method="torque"):
     assert control_method in ["torque", "velocity"]
 
     robot = load_mycobot()
-    pos_min = (0.10, -0.05, 0.1)
-    pos_max = (0.45, 0.15, 0.3)
+    pos_min = (0.01, -0.1, 0.01)
+    pos_max = (0.6, 0.1, 0.35)
 
     # Buat variabel q_init dengan 6 elemen
     mycobot_q_init = (0, 0, 0, 0, 0, 0) # Ganti dengan posisi awal yang aman
@@ -191,19 +191,19 @@ def main(control_method="torque"):
     torque_cbf = CBF.from_config(torque_config)
     velocity_config = EESafeSetVelocityConfig(robot, pos_min, pos_max)
     velocity_cbf = CBF.from_config(velocity_config)
-    traj = SinusoidalTaskTrajectory(
-        init_pos=(0.2, 0, 0.15),
-        init_rot=np.array(
-            [
-                [1, 0, 0],
-                [0, -1, 0],
-                [0, 0, -1],
-            ]
-        ),
-        amplitude=(0.05, 0, 0),
-        angular_freq=(5, 0, 0),
-        phase=(0, 0, 0),
-    )
+    # traj = SinusoidalTaskTrajectory(
+    #     init_pos=(0.2, 0, 0.15),
+    #     init_rot=np.array(
+    #         [
+    #             [1, 0, 0],
+    #             [0, -1, 0],
+    #             [0, 0, -1],
+    #         ]
+    #     ),
+    #     amplitude=(0.05, 0, 0),
+    #     angular_freq=(5, 0, 0),
+    #     phase=(0, 0, 0),
+    # )
     timestep = 1 / 1000
     bg_color = (1, 1, 1)
     if control_method == "torque":
@@ -211,7 +211,7 @@ def main(control_method="torque"):
             torque_config.pos_min,
             torque_config.pos_max,
             q_init=mycobot_q_init,
-            traj=traj,
+            # traj=traj,
             real_time=True,
             bg_color=bg_color,
             load_floor=False,
@@ -221,7 +221,7 @@ def main(control_method="torque"):
         env = MyCobotVelocityControlEnv(
             velocity_config.pos_min,
             velocity_config.pos_max,
-            traj=traj,
+            # traj=traj,
             real_time=True,
             bg_color=bg_color,
             load_floor=False,
