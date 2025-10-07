@@ -45,6 +45,9 @@ class CollisionsConfig(OSCBFTorqueConfig):
         self.z_min = z_min
         self.collision_positions = np.atleast_2d(collision_positions)
         self.collision_radii = np.ravel(collision_radii)
+
+        self.singularity_tol = 1e-4
+
         super().__init__(robot)
 
     def h_2(self, z, **kwargs):
@@ -68,7 +71,10 @@ class CollisionsConfig(OSCBFTorqueConfig):
             robot_collision_positions[:, 2] - self.z_min - robot_collision_radii.ravel()
         )
 
-        return jnp.concatenate([h_collision, h_table])
+        manipulability_index = self.robot.manipulability(q)
+        h_singularity = jnp.array([manipulability_index - self.singularity_tol])
+
+        return jnp.concatenate([h_collision, h_table, h_singularity])
 
     def alpha(self, h):
         return 25.0 * h
@@ -187,7 +193,7 @@ def compute_torque_control(
         c=c,
     )
     # Apply the CBF safety filter
-    jax.debug.print("Perintah Nominal (u_nom): {x}", x=u_nom)
+    # jax.debug.print("Perintah Nominal (u_nom): {x}", x=u_nom)
     return cbf.safety_filter(z, u_nom)
     # return u_nom
 
@@ -301,12 +307,12 @@ def main(control_method="torque", num_bodies=25):
     # kp_joint = 10.0
     # kd_joint = 5.0
 
-    kp_pos = 25.0
-    kp_rot = 15.0
-    kd_pos = 10.0
-    kd_rot = 8.0
-    kp_joint = 5.0
-    kd_joint = 4.0
+    kp_pos = 30.0
+    kp_rot = 64.4
+    kd_pos = 4.282
+    kd_rot = 9.055
+    kp_joint = 60.0
+    kd_joint = 6.552
     osc_torque_controller = PoseTaskTorqueController(
         n_joints=robot.num_joints,
         # kp_task=kp_pos,
@@ -354,12 +360,12 @@ def main(control_method="torque", num_bodies=25):
     last_print_time = 0
     time_log, h_log, torque_log, velocity_log, position_log = [], [], [], [], []
     try:
-        # simulation_duration = 20
-        # while env.t < simulation_duration:
-        while True:
+        simulation_duration = 20
+        while env.t < simulation_duration:
+        # while True:
             q_qdot = env.get_joint_state()
             z_zdot_ee_des = env.get_desired_ee_state()
-            print(f"Target Posisi (Bola Merah): {np.round(z_zdot_ee_des[:3], 3)}")
+            # print(f"Target Posisi (Bola Merah): {np.round(z_zdot_ee_des[:3], 3)}")
             tau = compute_control(q_qdot, z_zdot_ee_des)
             env.apply_control(tau)
             env.step()

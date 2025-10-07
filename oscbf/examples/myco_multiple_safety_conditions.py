@@ -14,13 +14,14 @@ encountered in practice.
 from functools import partial
 
 import numpy as np
+import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 from cbfpy import CBF
 
-from oscbf.core.manipulator import Manipulator, load_panda
-from oscbf.core.manipulation_env import FrankaTorqueControlEnv
+from oscbf.core.manipulator import Manipulator, load_mycobot
+from oscbf.core.manipulation_env import MyCobotTorqueControlEnv
 from oscbf.core.oscbf_configs import OSCBFTorqueConfig
 from oscbf.core.controllers import PoseTaskTorqueController
 
@@ -128,10 +129,9 @@ def compute_control(
             0.0,
             -jnp.pi / 6,
             0.0,
-            -3 * jnp.pi / 4,
+            -3 * jnp.pi / 2,
             0.0,
-            5 * jnp.pi / 9,
-            0.0,
+            jnp.pi / 3,
         ]
     )
 
@@ -160,7 +160,7 @@ def compute_control(
 
 
 def main():
-    robot = load_panda()
+    robot = load_mycobot()
     ee_pos_min = np.array([0.15, -0.25, 0.25])
     ee_pos_max = np.array([0.75, 0.25, 0.75])
     wb_pos_min = np.array([-0.5, -0.5, 0.0])
@@ -178,9 +178,9 @@ def main():
         wb_pos_max,
     )
     cbf = CBF.from_config(config)
-    env = FrankaTorqueControlEnv(
-        config.pos_min,
-        config.pos_max,
+    env = MyCobotTorqueControlEnv(
+        xyz_min=config.pos_min,
+        xyz_max=config.pos_max,
         collision_data=collision_data,
         wb_xyz_min=wb_pos_min,
         wb_xyz_max=wb_pos_max,
@@ -217,13 +217,110 @@ def main():
     @jax.jit
     def compute_control_jit(z, z_des):
         return compute_control(robot, osc_controller, cbf, z, z_des)
+    
+    time_log, h_log, torque_log, velocity_log, position_log = [], [], [], [], []
 
-    while True:
-        joint_state = env.get_joint_state()
-        ee_state_des = env.get_desired_ee_state()
-        tau = compute_control_jit(joint_state, ee_state_des)
-        env.apply_control(tau)
-        env.step()
+    try:
+        while True:
+            joint_state = env.get_joint_state()
+            ee_state_des = env.get_desired_ee_state()
+            tau = compute_control_jit(joint_state, ee_state_des)
+            env.apply_control(tau)
+            env.step()
+
+            time_log.append(env.t)
+
+            q = joint_state[:robot.num_joints]
+            q_dot = joint_state[robot.num_joints:]
+            position_log.append(q)
+            velocity_log.append(q_dot)
+            torque_log.append(tau)
+
+            # Hitung nilai h(z) saat ini
+            h_values = config.h_2(joint_state)
+            h_log.append(h_values)
+            
+    except KeyboardInterrupt:
+        print("\nSimulasi dihentikan oleh pengguna.")
+    
+    finally:
+        # Di dalam blok `finally:`
+
+        print("Simulasi selesai. Mempersiapkan data plot...")
+        # === TAMBAHKAN SELURUH BLOK DI BAWAH INI ===
+
+        # Konversi list ke numpy array
+        h_log = np.array(h_log)
+        torque_log = np.array(torque_log)
+        position_log = np.array(position_log)
+        velocity_log = np.array(velocity_log)
+
+        # Buat 4 subplot
+        fig, axs = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
+        # Ganti judul agar sesuai dengan file ini
+        fig.suptitle('Analisis Multi-Kondisi Aman (MyCobot)', fontsize=16)
+
+        # --- Plot 1: Evolusi Batasan Keamanan (h(z)) ---
+        # PENYESUAIAN PENTING: Beri label pada setiap jenis batasan
+        num_ee_constraints = 6  # 3 max, 3 min
+        num_joint_constraints = robot.num_joints * 2
+        num_singularity_constraints = 1
+        
+        # Buat label untuk setiap batasan agar plot lebih informatif
+        labels = (
+            [f"EE limit {i}" for i in range(num_ee_constraints)] +
+            [f"Joint limit {i}" for i in range(num_joint_constraints)] +
+            ["Singularity"] +
+            # Sisa batasan adalah tabrakan dan batas seluruh tubuh
+            [f"Other {i}" for i in range(h_log.shape[1] - num_ee_constraints - num_joint_constraints - num_singularity_constraints)]
+        )
+
+        if len(time_log) > 0:
+            for i in range(h_log.shape[1]):
+                # Beri label hanya untuk beberapa batasan penting agar legenda tidak penuh
+                label_to_show = None
+                if labels[i] in ["EE limit 0", "Joint limit 0", "Singularity"]:
+                    label_to_show = labels[i]
+                axs[0].plot(time_log, h_log[:, i], alpha=0.7, label=label_to_show)
+
+        axs[0].axhline(0, color='r', linestyle='--', label='Batas Aman (h=0)')
+        axs[0].set_title('Evolusi Batasan Keamanan (h(z))')
+        axs[0].set_ylabel('Nilai h(z)')
+        axs[0].grid(True)
+        axs[0].legend(fontsize='small')
+        
+        # --- Plot 2: Torsi Sendi (Torque) ---
+        start_index = 10 # Abaikan lonjakan awal
+        if len(time_log) > start_index:
+            for i in range(torque_log.shape[1]):
+                axs[1].plot(time_log[start_index:], torque_log[start_index:, i], label=f'Sendi {i+1}')
+        axs[1].set_title('Perintah Torsi Aman (Γ*)')
+        axs[1].set_ylabel('Torsi (Nm)')
+        axs[1].grid(True)
+        axs[1].legend(fontsize='small')
+
+        # --- Plot 3: Kecepatan Sendi (Velocity) ---
+        if len(time_log) > start_index:
+            for i in range(velocity_log.shape[1]):
+                axs[2].plot(time_log[start_index:], velocity_log[start_index:, i], label=f'Sendi {i+1}')
+        axs[2].set_title('Kecepatan Sendi (q_dot)')
+        axs[2].set_ylabel('Kecepatan (rad/s)')
+        axs[2].grid(True)
+        axs[2].legend(fontsize='small')
+
+        # --- Plot 4: Posisi Sendi (Position) ---
+        if len(time_log) > 0:
+            for i in range(position_log.shape[1]):
+                axs[3].plot(time_log, position_log[:, i], label=f'Sendi {i+1}')
+        axs[3].set_title('Posisi Sendi (q)')
+        axs[3].set_ylabel('Posisi (rad)')
+        axs[3].set_xlabel('Waktu (s)')
+        axs[3].grid(True)
+        axs[3].legend(fontsize='small')
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.show()
+
 
 
 if __name__ == "__main__":

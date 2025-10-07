@@ -336,7 +336,7 @@ class MyCobotTorqueControlEnv(ManipulationEnv):
         self,
         xyz_min=None,
         xyz_max=None,
-        target_pos=(0.2, 0, 0.2), #Perlu disesuaikan target awal
+        target_pos=(0.25, 0, 0.45), #Perlu disesuaikan target awal
         q_init=(0, 0, 0, 0, 0, 0), #6 Elemen
         traj=None,
         collision_data=None,

@@ -311,6 +311,8 @@ class Manipulator:
             collision_positions=collision_positions,
             collision_radii=collision_radii,
         )
+    
+   
 
     def joint_to_world_transforms(self, q: Array) -> Array:
         """Computes the transformation matrices for all joints (Joint frame --> world frame)
@@ -358,6 +360,13 @@ class Manipulator:
         # Multiply the transform by its corresponding link offset
         transforms = joint_transforms @ link_com_to_prev_joint_tfs
         return transforms
+    
+    # Di dalam kelas Manipulator di file manipulator.py
+    @jax.jit
+    def manipulability(self, q: Array) -> float:
+        J = self.ee_jacobian(q)
+        singular_values = jnp.linalg.svd(J, compute_uv=False)
+        return jnp.prod(singular_values)
 
     @jax.jit
     def ee_transform(self, q: Array) -> Array:
