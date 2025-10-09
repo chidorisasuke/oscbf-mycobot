@@ -1,0 +1,39 @@
+{
+  "best_gains": {
+    "kp_pos": 20.914314964688554,
+    "kd_pos": 22.757408190214218,
+    "kp_rot": 77.75969334706699,
+    "kd_rot": 8.206694823427561,
+    "kp_joint": [
+      30.223902809284112,
+      30.223902809284112,
+      30.223902809284112,
+      30.223902809284112,
+      30.223902809284112,
+      30.223902809284112
+    ],
+    "kd_joint": [
+      1.6408653431849543,
+      1.6408653431849543,
+      1.6408653431849543,
+      1.6408653431849543,
+      1.6408653431849543,
+      1.6408653431849543
+    ]
+  },
+  "best_performance": 798.518948425116,
+  "robot_config": {
+    "n_joints": 6,
+    "control_freq": 240.0,
+    "cbf_alpha_obstacle": 15.0,
+    "cbf_alpha_joint": 10.0,
+    "obstacle_safety_margin": 0.08
+  },
+  "tuning_config": {
+    "weight_error": 1.0,
+    "weight_smoothness": 0.4,
+    "weight_cbf_violation": 3.0,
+    "weight_collision_proximity": 2.5
+  },
+  "optimization_iterations": 421
+}

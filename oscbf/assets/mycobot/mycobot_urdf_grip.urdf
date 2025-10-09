@@ -215,22 +215,21 @@
     <origin xyz= "0 0.0456 0" rpy = "-1.5708 0 0"/>  
   </joint>
 
-  <!-- <link name="gripper_base">
+  <link name="gripper_base">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0 0 -0.012" />
       <mass value="0.05" /> 
-      <inertia ixx="5.0e-5" ixy="0.0" ixz="0.0" iyy="5.0e-5" iyz="0.0" izz="5.0e-5"/>
+      <inertia ixx="1.0e-5" ixy="0.0" ixz="0.0" iyy="1.0e-5" iyz="0.0" izz="1.0e-5" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_base.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_base.dae"/>
       </geometry>
     <origin xyz = "0.0 0 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_base.obj"/>
-       <box size="0.05 0.05 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_base.dae"/>
       </geometry>
     <origin xyz = "0.0 0 -0.012 " rpy = " 0 0 0"/>
     </collision>
@@ -239,19 +238,18 @@
   <link name="gripper_left1">
     <inertial>
       <origin rpy="0 0 0" xyz="0.039 -0.0133 -0.012" />
-      <mass value="0.012" /> 
-      <inertia ixx="5.0e-6" ixy="0.0" ixz="0.0" iyy="5.0e-6" iyz="0.0" izz="5.0e-6"/>
+      <mass value="0.01" /> 
+      <inertia ixx="1.0e-6" ixy="0.0" ixz="0.0" iyy="1.0e-6" iyz="0.0" izz="1.0e-6" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_left1.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_left1.dae"/>
       </geometry>
     <origin xyz = "0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_left1.obj"/>
-       <box size="0.078 0.015 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_left1.dae"/>
       </geometry>
       <origin xyz = "0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
     </collision>
@@ -260,19 +258,18 @@
   <link name="gripper_left2">
     <inertial>
       <origin rpy="0 0 0" xyz="0.005 -0.0195 -0.012" />
-      <mass value="0.012" /> 
-      <inertia ixx="5.0e-6" ixy="0.0" ixz="0.0" iyy="5.0e-6" iyz="0.0" izz="5.0e-6" />
+      <mass value="0.01" /> 
+      <inertia ixx="1.0e-6" ixy="0.0" ixz="0.0" iyy="1.0e-6" iyz="0.0" izz="1.0e-6" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_left2.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_left2.dae"/>
       </geometry>
     <origin xyz = "0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_left2.obj"/>
-       <box size="0.015 0.04 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_left2.dae"/>
       </geometry>
         <origin xyz = "0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
     </collision>
@@ -281,19 +278,18 @@
   <link name="gripper_left3">
     <inertial>
       <origin rpy="0 0 0" xyz="0.012 0.0025 -0.012" />
-      <mass value="0.015" /> 
-      <inertia ixx="5.0e-6" ixy="0.0" ixz="0.0" iyy="5.0e-6" iyz="0.0" izz="5.0e-6" />
+      <mass value="0.01" /> 
+      <inertia ixx="1.0e-6" ixy="0.0" ixz="0.0" iyy="1.0e-6" iyz="0.0" izz="1.0e-6" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_left3.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_left3.dae"/>
       </geometry>
     <origin xyz = "0.012 0.0025 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_left3.obj"/>
-       <box size="0.015 0.04 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_left3.dae"/>
       </geometry>
     <origin xyz = "0.012 0.0025 -0.012 " rpy = " 0 0 0"/>
     </collision>
@@ -303,18 +299,17 @@
     <inertial>
       <origin rpy="0 0 0" xyz="-0.039 -0.0133 -0.012" />
       <mass value="0.01" /> 
-      <inertia ixx="5.0e-6" ixy="0.0" ixz="0.0" iyy="5.0e-6" iyz="0.0" izz="5.0e-6" />
+      <inertia ixx="1.0e-6" ixy="0.0" ixz="0.0" iyy="1.0e-6" iyz="0.0" izz="1.0e-6" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_right1.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_right1.dae"/>
       </geometry>
     <origin xyz = "-0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_right1.obj"/>
-       <box size="0.024 0.015 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_right1.dae"/>
       </geometry>
         <origin xyz = "-0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
     </collision>
@@ -322,20 +317,19 @@
 
   <link name="gripper_right2">
     <inertial>
-      <origin rpy="0 0 0" xyz="-0.005 -0.0195 0.0" />
+      <origin rpy="0 0 0" xyz="-0.005 -0.0195 -0.012" />
       <mass value="0.01" /> 
-      <inertia ixx="5.0e-6" ixy="0.0" ixz="0.0" iyy="5.0e-6" iyz="0.0" izz="5.0e-6" />
+      <inertia ixx="1.0e-6" ixy="0.0" ixz="0.0" iyy="1.0e-6" iyz="0.0" izz="1.0e-6" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_right2.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_right2.dae"/>
       </geometry>
     <origin xyz = "-0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_right2.obj"/>
-       <box size="0.024 0.015 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_right2.dae"/>
       </geometry>
         <origin xyz = "-0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
     </collision>
@@ -343,20 +337,19 @@
 
   <link name="gripper_right3">
     <inertial>
-      <origin rpy="0 0 0" xyz="-0.012 0.0025 0.0" />
+      <origin rpy="0 0 0" xyz="-0.012 0.0025 -0.012" />
       <mass value="0.01" /> 
-      <inertia ixx="5.0e-6" ixy="0.0" ixz="0.0" iyy="5.0e-6" iyz="0.0" izz="5.0e-6" />
+      <inertia ixx="1.0e-6" ixy="0.0" ixz="0.0" iyy="1.0e-6" iyz="0.0" izz="1.0e-6" />
     </inertial>
     <visual>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_right3.obj"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_right3.dae"/>
       </geometry>
     <origin xyz = "-0.012 0.0025 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
-       <mesh filename="mycobot_adaptive_gripper/gripper_right3.obj"/>
-       <box size="0.024 0.015 0.024"/>
+       <mesh filename="mycobot_adaptive_gripper/gripper_right3.dae"/>
       </geometry>
     <origin xyz = "-0.012 0.0025 -0.012" rpy = " 0 0 0"/>
     </collision>
@@ -365,61 +358,61 @@
 <joint name="gripper_to_flange_joint" type="fixed">
   <parent link="joint6_flange"/>
   <child link="gripper_base"/>
-  <origin xyz="0 0 0.024" rpy="0 0 0" /> 
+  <origin xyz="0 0 0" rpy="0 0 0" /> 
 </joint>
 
-<joint name="gripper_controller" type="fixed">
+<joint name="gripper_controller" type="revolute">
     <axis xyz="0 0 1"/>
     <limit effort = "1000.0" lower = "-0.74" upper = "0.15" velocity = "0"/>
     <parent link="gripper_base"/>
     <child link="gripper_left3"/>
-    <origin xyz= "0.012 0.005 0" rpy = "0 0 0"/> 
+    <origin xyz= "-0.012 0.005 0" rpy = "0 0 0"/> 
   </joint>
 
-  <joint name="gripper_base_to_gripper_left2" type="fixed">
+  <joint name="gripper_base_to_gripper_left2" type="revolute">
     <axis xyz="0 0 1"/>
     <limit effort = "1000.0" lower = "-0.8" upper = "0.5" velocity = "0"/>
     <parent link="gripper_base"/>
     <child link="gripper_left2"/>
-    <origin xyz= "0.005 0.027 0" rpy = "0 0 0"/> 
+    <origin xyz= "-0.005 0.027 0" rpy = "0 0 0"/> 
     <mimic joint="gripper_controller" multiplier="1.0" offset="0" />
   </joint>
 
-  <joint name="gripper_left3_to_gripper_left1" type="fixed">
+  <joint name="gripper_left3_to_gripper_left1" type="revolute">
     <axis xyz="0 0 1"/>
     <limit effort = "1000.0" lower = "-0.5" upper = "0.5" velocity = "0"/>
     <parent link="gripper_left3"/>
     <child link="gripper_left1"/>
-    <origin xyz= "0.027 0.016 0" rpy = "0 0 0"/> 
+    <origin xyz= "-0.027 0.016 0" rpy = "0 0 0"/> 
     <mimic joint="gripper_controller" multiplier="-1.0" offset="0" />
   </joint>
 
-  <joint name="gripper_base_to_gripper_right3" type="fixed">
+  <joint name="gripper_base_to_gripper_right3" type="revolute">
     <axis xyz="0 0 1"/>
     <limit effort = "1000.0" lower = "-0.15" upper = "0.7" velocity = "0"/>
     <parent link="gripper_base"/>
     <child link="gripper_right3"/>
-    <origin xyz= "-0.012 0.005 0" rpy = "0 0 0"/> 
+    <origin xyz= "0.012 0.005 0" rpy = "0 0 0"/> 
     <mimic joint="gripper_controller" multiplier="-1.0" offset="0" />
   </joint>
 
-  <joint name="gripper_base_to_gripper_right2" type="fixed">
+  <joint name="gripper_base_to_gripper_right2" type="revolute">
     <axis xyz="0 0 1"/>
     <limit effort = "1000.0" lower = "-0.5" upper = "0.8" velocity = "0"/>
     <parent link="gripper_base"/>
     <child link="gripper_right2"/>
-    <origin xyz= "-0.005 0.027 0" rpy = "0 0 0"/> 
+    <origin xyz= "0.005 0.027 0" rpy = "0 0 0"/> 
     <mimic joint="gripper_controller" multiplier="-1.0" offset="0" />
   </joint>
 
-  <joint name="gripper_right3_to_gripper_right1" type="fixed">
+  <joint name="gripper_right3_to_gripper_right1" type="revolute">
     <axis xyz="0 0 1"/>
     <limit effort = "1000.0" lower = "-0.5" upper = "0.5" velocity = "0"/>
     <parent link="gripper_right3"/>
     <child link="gripper_right1"/>
-    <origin xyz= "-0.027 0.016 0" rpy = "0 0 0"/> 
+    <origin xyz= "0.027 0.016 0" rpy = "0 0 0"/> 
     <mimic joint="gripper_controller" multiplier="1.0" offset="0" />
-  </joint> -->
+  </joint>
 
 </robot>
 

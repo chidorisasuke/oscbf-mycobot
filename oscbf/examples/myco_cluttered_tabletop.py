@@ -267,7 +267,7 @@ def main(control_method="torque", num_bodies=25):
     #     phase=(0, 0, 0),
     # )
 
-    mycobot_q_init = (0, 0, 0, 0, 0, 0) # Contoh: semua sendi di posisi nol
+    mycobot_q_init = (0, -0.446, -0.071, -0.041, 0, 0) # Contoh: semua sendi di posisi nol
 
     timestep = 1 / 240  #  1 / 1000
     bg_color = (1, 1, 1)
@@ -300,19 +300,19 @@ def main(control_method="torque", num_bodies=25):
         cameraTargetPosition=(0.20, 0.07, -0.09),
     )
 
-    # kp_pos = 50.0
-    # kp_rot = 20.0
-    # kd_pos = 20.0
-    # kd_rot = 10.0
-    # kp_joint = 10.0
-    # kd_joint = 5.0
+    kp_pos = 20.91
+    kp_rot = 22.76
+    kd_pos = 77.76
+    kd_rot = 8.21
+    kp_joint = 30.22
+    kd_joint = 1.64
 
-    kp_pos = 30.0
-    kp_rot = 64.4
-    kd_pos = 4.282
-    kd_rot = 9.055
-    kp_joint = 60.0
-    kd_joint = 6.552
+    # kp_pos = 30.0
+    # kp_rot = 64.4
+    # kd_pos = 4.282
+    # kd_rot = 9.055
+    # kp_joint = 60.0
+    # kd_joint = 6.552
     osc_torque_controller = PoseTaskTorqueController(
         n_joints=robot.num_joints,
         # kp_task=kp_pos,
@@ -358,9 +358,9 @@ def main(control_method="torque", num_bodies=25):
         raise ValueError(f"Invalid control method: {control_method}")
 
     last_print_time = 0
-    time_log, h_log, torque_log, velocity_log, position_log = [], [], [], [], []
+    time_log, h_log, torque_log, velocity_log, position_log, singularity_log = [], [], [], [], [], []
     try:
-        simulation_duration = 20
+        simulation_duration = 30
         while env.t < simulation_duration:
         # while True:
             q_qdot = env.get_joint_state()
@@ -401,9 +401,12 @@ def main(control_method="torque", num_bodies=25):
             if control_method == "torque":
                 h_values = torque_config.h_2(q_qdot)
                 torque_log.append(tau)
+                singularity_value = h_values[-1] + torque_config.singularity_tol
+                singularity_log.append(singularity_value)
             else: 
                 h_values = velocity_config.h_1(q_qdot)
                 torque_log.append(np.zeros_like(q))
+                singularity_log.append(0)
             
             h_log.append(h_values)
 
@@ -420,7 +423,7 @@ def main(control_method="torque", num_bodies=25):
         velocity_log = np.array(velocity_log)
 
         # Buat 4 subplot
-        fig, axs = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
+        fig, axs = plt.subplots(5, 1, figsize=(12, 20), sharex=True)
         fig.suptitle('Analisis Simulasi Robot Mycobot 280', fontsize=16)
 
         # Plot 1: Evolusi Batasan Keamanan (h(z))
@@ -483,6 +486,17 @@ def main(control_method="torque", num_bodies=25):
         axs[3].set_xlabel('Waktu (s)')
         axs[3].grid(True)
         axs[3].legend(fontsize='small')
+
+        # Plot 2: Evolusi Batasan Singularitas
+        if len(time_log) > 0:
+            axs[4].plot(time_log, singularity_log, label='Manipulability Index (μ)', color='purple')
+            # Gambar garis batas toleransi singularitas
+            axs[4].axhline(torque_config.singularity_tol, color='r', linestyle='--', label=f'Batas Aman (μ={torque_config.singularity_tol})')
+        axs[4].set_title('Evolusi Batasan Singularitas (Manipulability)')
+        axs[4].set_ylabel('Nilai Manipulabilitas (μ)')
+        axs[4].set_yscale('log') # Gunakan skala logaritmik agar lebih terlihat
+        axs[4].grid(True)
+        axs[4].legend(fontsize='small')
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         plt.show()

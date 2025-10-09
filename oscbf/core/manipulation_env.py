@@ -9,7 +9,7 @@ from jax import Array
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 import numpy as np
-import pybullet
+import pybullet 
 import pybullet_data
 from pybullet_utils.bullet_client import BulletClient
 
@@ -66,6 +66,7 @@ class ManipulationEnv:
         real_time: bool = False,
         timestep: float = 1 / 240,
         load_table: bool = False,
+        pybullet_client_mode = pybullet.GUI, #HANYA DIGUNAKAN SAAT TUNING PID, PYBULLET HEADLESS
     ):
         assert isinstance(urdf, str)
         self.urdf = urdf
@@ -75,7 +76,8 @@ class ManipulationEnv:
         assert isinstance(traj, TaskTrajectory) or traj is None
         self.traj = traj
         with stdout_redirected():
-            self.client: pybullet = BulletClient(pybullet.GUI)
+            # self.client: pybullet = BulletClient(pybullet.GUI)
+            self.client: pybullet = BulletClient(pybullet_client_mode)
         assert isinstance(timestep, float) and timestep > 0
         self.client.setTimeStep(timestep)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -336,8 +338,8 @@ class MyCobotTorqueControlEnv(ManipulationEnv):
         self,
         xyz_min=None,
         xyz_max=None,
-        target_pos=(0.25, 0, 0.45), #Perlu disesuaikan target awal
-        q_init=(0, 0, 0, 0, 0, 0), #6 Elemen
+        target_pos=(0.35, 0, 0.35), #Perlu disesuaikan target awal
+        q_init=(0, -0.446, -0.071, -0.041, 0, 0), #6 Elemen
         traj=None,
         collision_data=None,
         wb_xyz_min=None,
@@ -347,6 +349,7 @@ class MyCobotTorqueControlEnv(ManipulationEnv):
         real_time=False,
         timestep=1 / 240, 
         load_table=False,
+        pybullet_client_mode=pybullet.GUI, #HANYA SAAT TUNING PID, HEADLESS PYBULLET 
     ):
         super().__init__(
             "oscbf/assets/mycobot/mycobot_urdf.urdf",
@@ -367,6 +370,7 @@ class MyCobotTorqueControlEnv(ManipulationEnv):
             real_time=real_time,
             timestep=timestep,
             load_table=load_table,
+            pybullet_client_mode=pybullet_client_mode #TAMBAHAN AGAR HEADLESS
         )
 
 class MyCobotVelocityControlEnv(ManipulationEnv):

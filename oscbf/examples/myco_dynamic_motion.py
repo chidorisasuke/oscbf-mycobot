@@ -46,6 +46,7 @@ class EESafeSetTorqueConfig(OSCBFTorqueConfig):
     ):
         self.pos_min = np.asarray(pos_min)
         self.pos_max = np.asarray(pos_max)
+        self.singularity_tol = 1e-4
         super().__init__(
             robot, compensate_centrifugal_coriolis=compensate_centrifugal_coriolis
         )
@@ -53,13 +54,15 @@ class EESafeSetTorqueConfig(OSCBFTorqueConfig):
     def h_2(self, z, **kwargs):
         q = z[: self.num_joints]
         ee_pos = self.robot.ee_position(q)
-        return jnp.concatenate([self.pos_max - ee_pos, ee_pos - self.pos_min])
+        manipulability_index = self.robot.manipulability(q)
+        h_singularity = jnp.array([manipulability_index - self.singularity_tol])
+        return jnp.concatenate([self.pos_max - ee_pos, ee_pos - self.pos_min, h_singularity])
 
     def alpha(self, h):
-        return 10.0 * h
+        return 50.0 * h
 
     def alpha_2(self, h_2):
-        return 10.0 * h_2
+        return 50.0 * h_2
 
 
 @jax.tree_util.register_static
@@ -169,11 +172,11 @@ def main(control_method="torque"):
     assert control_method in ["torque", "velocity"]
 
     robot = load_mycobot()
-    pos_min = (0.01, -0.1, 0.01)
-    pos_max = (0.6, 0.1, 0.35)
+    pos_min = (0.15, -0.2, 0.3)
+    pos_max = (0.45, 0.2, 0.55)
 
     # Buat variabel q_init dengan 6 elemen
-    mycobot_q_init = (0, 0, 0, 0, 0, 0) # Ganti dengan posisi awal yang aman
+    mycobot_q_init = (0, -0.446, -0.071, -0.041, 0, 0) # Ganti dengan posisi awal yang aman
 
     time_log = []
     h_log = []
@@ -235,12 +238,19 @@ def main(control_method="torque"):
         cameraTargetPosition=(0.44, 0.16, 0.28),
     )
 
-    kp_pos = 5.0
-    kp_rot = 2.0
-    kd_pos = 2.0
-    kd_rot = 1.0
-    kp_joint = 1.0
-    kd_joint = 0.5
+    # kp_pos = 5.0
+    # kp_rot = 2.0
+    # kd_pos = 2.0
+    # kd_rot = 1.0
+    # kp_joint = 1.0
+    # kd_joint = 0.5
+
+    kp_pos = 20.91
+    kp_rot = 22.76
+    kd_pos = 77.76
+    kd_rot = 8.21
+    kp_joint = 30.22
+    kd_joint = 1.64
     osc_torque_controller = PoseTaskTorqueController(
         n_joints=robot.num_joints,
         kp_task=np.concatenate([kp_pos * np.ones(3), kp_rot * np.ones(3)]),

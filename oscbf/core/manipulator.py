@@ -514,6 +514,7 @@ class Manipulator:
         pts = []
         radii = []
         for i in range(self.num_joints):
+            # print(f"Link {i+1}: Memproses posisi = {self.collision_positions[i]}") #DEBUGGING
             pts.append(
                 transform_points(joint_transforms[i], self.collision_positions[i])
             )
@@ -777,7 +778,7 @@ def load_mycobot() -> Manipulator:
         "oscbf/assets/mycobot/mycobot_urdf.urdf",
         ee_offset=np.block(
             [
-                [np.eye(3), np.reshape(np.array([0.0, 0.0, 0.216]), (-1, 1))],
+                [np.eye(3), np.reshape(np.array([0.0, 0.0, 0.0]), (-1, 1))],
                 [0.0, 0.0, 0.0, 1.0],
             ]
         ),

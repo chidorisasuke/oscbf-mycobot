@@ -4,6 +4,17 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize, differential_evolution
 from dataclasses import dataclass
 import time
+import pybullet as p
+import argparse
+
+from oscbf.core.manipulator import Manipulator, load_mycobot
+from oscbf.core.manipulation_env import MyCobotTorqueControlEnv
+from oscbf.core.controllers import PoseTaskTorqueController
+from oscbf.core.oscbf_configs import OSCBFTorqueConfig
+from oscbf.utils.trajectory import SinusoidalTaskTrajectory
+from cbfpy import CBF
+import jax
+import jax.numpy as jnp
 
 @dataclass
 class PDGains:
@@ -27,9 +38,10 @@ class MyCobotConfig:
     joint_torque_limits: np.ndarray = None  # Nm (converted from 2.1 kg·cm)
     
     # CBF parameters
-    cbf_alpha_obstacle: float = 25.0  # Obstacle avoidance strength
-    cbf_alpha_joint: float = 25.0  # Joint limit avoidance strength
+    cbf_alpha_obstacle: float = 10.0  # Obstacle avoidance strength
+    cbf_alpha_joint: float = 10.0  # Joint limit avoidance strength
     cbf_safety_margin: float = 0.05  # 5cm safety margin
+    singularity_tol: float = 1e-4
     
     # Workspace limits (meter)
     workspace_radius: float = 0.28  # MyCobot 280mm reach
@@ -47,7 +59,7 @@ class TuningConfig:
     """Auto-tuning configuration for MyCobot simulation"""
     # Search bounds optimized for MyCobot 280pi
     kp_pos_range: Tuple[float, float] = (30.0, 200.0)  # Position proportional
-    kd_pos_range: Tuple[float, float] = (3.0, 25.0)    # Position derivative
+    kd_pos_range: Tuple[float, float] = (3.0, 30.0)    # Position derivative
     kp_rot_range: Tuple[float, float] = (20.0, 120.0)  # Rotation proportional
     kd_rot_range: Tuple[float, float] = (2.0, 15.0)    # Rotation derivative
     kp_joint_range: Tuple[float, float] = (10.0, 60.0) # Joint proportional
@@ -471,17 +483,29 @@ class MyCobotPDTuner:
         # NOTE: Untuk optimisasi, seringkali lebih cepat mengevaluasi hanya pada satu
         # trajektori yang representatif di setiap iterasi.
         # Jika Anda ingin evaluasi penuh, hapus komentar di bawah.
-        for trajectory in test_trajectories:
-            result = self.simulate_mycobot_response(gains, trajectory)
+        for trajectory_or_config in self._internal_test_trajectories:
+            if self.simulation_func is not None:
+                result =  self.simulation_func(gains, trajectory_or_config)
+            else: 
+                result = self.simulate_mycobot_response(gains, trajectory_or_config)
+            
             cost = self.evaluate_tracking_performance(result)
             total_cost += cost
         
         # Evaluasi pada trajektori pertama saja untuk kecepatan
         result = self.simulate_mycobot_response(gains, self._internal_test_trajectories[0])
         total_cost = self.evaluate_tracking_performance(result)
+        avg_cost = total_cost / len(self._internal_test_trajectories)
+
+        self.tuning_history.append({'gains': gains, 'avg_cost': avg_cost})
+
+        if avg_cost < self.best_performance:
+            self.best_performance = avg_cost
+            self.best_gains = gains
+            print(f"  ✓ New best! Cost: {avg_cost:.4f} (kp_pos={gains.kp_pos:.1f}, kd_pos={gains.kd_pos:.1f})")
             
         # avg_cost = total_cost / len(test_trajectories)
-        return total_cost
+        return avg_cost
 
     def bayesian_optimization_tuning(self, test_trajectories: List[np.ndarray],
                                      n_iterations: int = 50) -> PDGains:
@@ -514,9 +538,13 @@ class MyCobotPDTuner:
             tol=0.01,
             seed=42,
             disp=True,
-            workers=-1  # Use parallel processing
+            workers=-1,  # Use parallel processing, 
         )
-        
+        """
+        -1 if u want activate the paralelism and using non-simulation arg
+        1 if u want nonactivated the paralelism
+        2 if ur computer are no GPU External
+        """
         # Extract optimized gains
         x_opt = result.x
         optimized_gains = PDGains(
@@ -530,7 +558,7 @@ class MyCobotPDTuner:
         
         print(f"\nOptimization complete! Best cost: {result.fun:.4f}")
         
-        return optimized_gains
+        return self.best_gains
     
     def iterative_refinement(self, initial_gains: PDGains, 
                             test_trajectories: List[np.ndarray],
@@ -724,30 +752,174 @@ class MyCobotPDTuner:
         ax4.grid(True, alpha=0.3)
         
         # 5. Final gains summary (bar chart)
+jax.tree_util.register_static
+class TuningSafetyConfig(OSCBFTorqueConfig):
+    def __init__(self, robot:Manipulator, singularity_tol:float):
+        self.singularity_tol = singularity_tol
+        self.q_min = robot.joint_lower_limits
+        self.q_max = robot.joint_upper_limits
+        super().__init__(robot)
 
+    def h_2(self, z, **kwargs):
+        q = z[:self.num_joints]
+        h_joint_limits = jnp.concatenate([
+            jnp.asarray(self.q_max) - q,
+            q - jnp.asarray(self.q_min)
+        ])
+
+        manipulability_index = self.robot.manipulability(q)
+        h_singularity = jnp.array([manipulability_index - self.singularity_tol])
+
+        return jnp.concatenate([h_joint_limits, h_singularity])
+    
+def run_pybullet_simulation(gains: PDGains, trajectory_config: Dict) -> Dict:
+    """
+    Menjalankan satu episode simulasi PyBullet lengkap secara headless (tanpa GUI)
+    dan mengembalikan metrik performa.
+    """
+    robot = load_mycobot()
+    robot_config = MyCobotConfig()
+    tuning_cfg = TuningConfig()
+
+    # traj = SinusoidalTaskTrajectory(
+    #     init_pos=trajectory_config.get("center", [0.15, 0, 0.25]),
+    #     amplitude=trajectory_config.get("amplitude", [0.05, 0.05, 0.05]),
+    #     angular_freq=trajectory_config.get("frequency", [0.5, 0.5, 0.5])
+    # )
+
+    traj = SinusoidalTaskTrajectory(
+        init_pos=trajectory_config.get("center"),
+        init_rot=trajectory_config.get("init_rot"),  # <-- Tambahkan ini
+        amplitude=trajectory_config.get("amplitude"),
+        angular_freq=trajectory_config.get("frequency"),
+        phase=trajectory_config.get("phase")          # <-- Tambahkan ini
+    )
+
+    env = MyCobotTorqueControlEnv(
+        traj = traj,
+        real_time=False,
+        timestep=1.0/robot_config.control_freq,
+        pybullet_client_mode=p.DIRECT
+    )
+
+    osc_controller = PoseTaskTorqueController(
+        n_joints=robot.num_joints,
+        kp_task=np.concatenate([gains.kp_pos * np.ones(3), gains.kp_rot * np.ones(3)]),
+        kd_task=np.concatenate([gains.kd_pos * np.ones(3), gains.kd_rot *  np.ones(3)]),
+        kp_joint=gains.kp_joint,
+        kd_joint=gains.kd_joint,
+        tau_min=None, tau_max=None
+    )
+
+    safety_config = TuningSafetyConfig(robot, singularity_tol=robot_config.singularity_tol)
+    cbf = CBF.from_config(safety_config)
+
+    @jax.jit
+    def compute_control_jit(z, z_des):
+        q, qdot = z[:robot.num_joints], z[robot.num_joints:]
+        M, M_inv, g, c, J, ee_tmat = robot.torque_control_matrices(q, qdot)
+        u_nom = osc_controller(
+            q, qdot, 
+            pos=ee_tmat[:3, 3], 
+            rot=ee_tmat[:3, :3],
+            des_pos=z_des[:3], 
+            des_rot=jnp.reshape(z_des[3:12], (3, 3)),
+            des_vel=z_des[12:15], 
+            des_omega=z_des[15:18],
+            des_accel=jnp.zeros(3), 
+            des_alpha=jnp.zeros(3),
+            des_q=np.zeros(robot.num_joints), 
+            des_qdot=jnp.zeros(robot.num_joints),
+            J=J, 
+            M=M, 
+            M_inv=M_inv, 
+            g=g, 
+            c=c
+        )
+        return cbf.safety_filter(z, u_nom)
+
+    errors, torques, velocities, accelerations = [], [], [], []
+
+    while env.t < tuning_cfg.test_duration:
+        joint_state = env.get_joint_state()
+        ee_state_des = env.get_desired_ee_state()
+
+        tau = compute_control_jit(joint_state, ee_state_des)
+
+        env.apply_control(np.asarray(tau))
+        env.step()
+
+        current_pos = robot.ee_position(joint_state[:robot.num_joints])
+        error_norm = np.linalg.norm(current_pos - ee_state_des[:3])
+        errors.append(error_norm)
+        torques.append(np.asarray(tau))
+        velocities.append(joint_state[robot.num_joints:])
+        accelerations.append(np.linalg.norm(tau))
+
+    env.client.disconnect()
+
+    return{
+        'errors': np.array(errors),
+        'torques': np.array(torques),
+        'velocities': np.array(velocities),
+        'accelerations': np.array(accelerations),
+    }
 # ==============================================================================
 # BLOK UTAMA UNTUK MENJALANKAN AUTO-TUNING (INSPIRASI DARI KODE 2)
 # ==============================================================================
 if __name__ == "__main__":
+
+    # --- Setup Argumen Parser untuk CLI ---
+    parser = argparse.ArgumentParser(description="Auto-Tuning untuk Gain PD MyCobot.")
+    parser.add_argument(
+        '--no-simulation', 
+        action='store_true', 
+        help="Jalankan tuning menggunakan model matematika internal yang cepat, bukan simulasi PyBullet."
+    )
+    args = parser.parse_args()
     
     # 1. Inisialisasi Tuner dengan Konfigurasi MyCobot
     # Menggunakan kelas MyCobotConfig dan TuningConfig dari KODE 1
     print("Menginisialisasi Auto-Tuner untuk MyCobot 280pi...")
-    mycobot_config = MyCobotConfig()
-    tuning_config = TuningConfig()
-    tuner = MyCobotPDTuner(mycobot_config=mycobot_config, tuning_config=tuning_config)
+    # mycobot_config = MyCobotConfig()
+    # tuning_config = TuningConfig()
+    if args.no_simulation:
+        print("MODE: Menjalankan TANPA simulasi PyBullet (menggunakan model internal).")
+        tuner = MyCobotPDTuner()
+    else:
+        print("MODE: Menjalankan DENGAN simulasi PyBullet (headless).")
+        tuner = MyCobotPDTuner(simulation_func=run_pybullet_simulation)
 
     # 2. Buat Beberapa Trajektori Uji yang Beragam
     # Menggunakan metode generate_test_trajectories dari KODE 1
     print("\nMembuat beberapa trajektori uji yang beragam...")
-    test_trajectories = tuner.generate_test_trajectories()
-    print(f"Dibuat {len(test_trajectories)} trajektori uji untuk evaluasi.")
+    if args.no_simulation:
+        test_trajectories = tuner.generate_test_trajectories()
+    else:
+        test_trajectories = [
+            {'type': 'sinusoidal', 
+            'center': [0.15, 0.0, 0.25], 
+            'amplitude': [0.05, 0.05, 0.03], 
+            'frequency': [0.3, 0.3, 0.5],
+            'init_rot' : np.eye(3),
+            'phase' : [0, 0, 0]
+            },
+            {'type': 'sinusoidal',
+            'center': [0.12, 0.05, 0.22],
+            'amplitude': [0.08, 0.0, 0.05], 
+            'frequency': [0.5, 0, 0.5],
+            'init_rot' : np.eye(3),
+            'phase': [np.pi/2, 0, 0]
+            },
+        ]
+        print(f"Dibuat {len(test_trajectories)} trajektori uji untuk evaluasi.")
 
     # 3. Jalankan Proses Optimisasi
     # Kita akan menggunakan 'bayesian_optimization_tuning' dari KODE 1 
     # karena ini adalah metode pencarian global yang lebih kuat daripada L-BFGS-B.
     print("\nMemulai proses optimisasi gain PD (menggunakan Differential Evolution)...")
-    print("Proses ini mungkin memakan waktu beberapa menit, tergantung jumlah iterasi.")
+    if not args.no_simulation:
+        print("Proses ini mungkin memakan waktu beberapa menit, tergantung jumlah iterasi.")
     
     # Anda bisa menaikkan n_iterations (misal ke 50) untuk hasil yang lebih akurat,
     # tapi 20 adalah awal yang baik.
@@ -760,50 +932,54 @@ if __name__ == "__main__":
     print("\n" + "="*25)
     print("=== PROSES TUNING SELESAI ===")
     print("="*25)
-    print("\nGain PD optimal yang ditemukan:")
-    print(f"  - Kp_pos: {optimized_gains.kp_pos:.3f}")
-    print(f"  - Kd_pos: {optimized_gains.kd_pos:.3f}")
-    print(f"  - Kp_rot: {optimized_gains.kp_rot:.3f}")
-    print(f"  - Kd_rot: {optimized_gains.kd_rot:.3f}")
-    print(f"  - Kp_joint: {optimized_gains.kp_joint[0]:.3f} (nilai seragam untuk semua sendi)")
-    print(f"  - Kd_joint: {optimized_gains.kd_joint[0]:.3f} (nilai seragam untuk semua sendi)")
 
-    # 5. Buat Fungsi Ekspor (jika belum ada di kelas Anda)
-    # Ini akan sangat berguna untuk menyalin hasil ke skrip simulasi Anda.
-    # Pastikan metode ini ada di dalam kelas MyCobotPDTuner Anda.
-    def export_gains_to_controller_format(gains: PDGains) -> Dict:
-        """Mengekspor gain ke format yang dibutuhkan oleh OSCBF controller."""
-        return {
-            'kp_task': np.concatenate([
-                gains.kp_pos * np.ones(3),
-                gains.kp_rot * np.ones(3)
-            ]),
-            'kd_task': np.concatenate([
-                gains.kd_pos * np.ones(3),
-                gains.kd_rot * np.ones(3)
-            ]),
-            'kp_joint': gains.kp_joint,
-            'kd_joint': gains.kd_joint
-        }
+    if optimized_gains:
+        print("\nGain PD optimal yang ditemukan:")
+        print(f"  - Kp_pos: {optimized_gains.kp_pos:.3f}")
+        print(f"  - Kd_pos: {optimized_gains.kd_pos:.3f}")
+        print(f"  - Kp_rot: {optimized_gains.kp_rot:.3f}")
+        print(f"  - Kd_rot: {optimized_gains.kd_rot:.3f}")
+        print(f"  - Kp_joint: {optimized_gains.kp_joint[0]:.3f} (nilai seragam untuk semua sendi)")
+        print(f"  - Kd_joint: {optimized_gains.kd_joint[0]:.3f} (nilai seragam untuk semua sendi)")
 
-    controller_gains = export_gains_to_controller_format(optimized_gains)
+        # 5. Buat Fungsi Ekspor (jika belum ada di kelas Anda)
+        # Ini akan sangat berguna untuk menyalin hasil ke skrip simulasi Anda.
+        # Pastikan metode ini ada di dalam kelas MyCobotPDTuner Anda.
+        def export_gains_to_controller_format(gains: PDGains) -> Dict:
+            """Mengekspor gain ke format yang dibutuhkan oleh OSCBF controller."""
+            return {
+                'kp_task': np.concatenate([
+                    gains.kp_pos * np.ones(3),
+                    gains.kp_rot * np.ones(3)
+                ]),
+                'kd_task': np.concatenate([
+                    gains.kd_pos * np.ones(3),
+                    gains.kd_rot * np.ones(3)
+                ]),
+                'kp_joint': gains.kp_joint,
+                'kd_joint': gains.kd_joint
+            }
 
-    print("\nFormat untuk disalin ke skrip simulasi Anda:")
-    print("-" * 40)
-    print(f"kp_pos = {optimized_gains.kp_pos:.3f}")
-    print(f"kp_rot = {optimized_gains.kp_rot:.3f}")
-    print(f"kd_pos = {optimized_gains.kd_pos:.3f}")
-    print(f"kd_rot = {optimized_gains.kd_rot:.3f}")
-    print(f"kp_joint = {optimized_gains.kp_joint[0]:.3f}")
-    print(f"kd_joint = {optimized_gains.kd_joint[0]:.3f}")
-    print("-" * 40)
+        controller_gains = export_gains_to_controller_format(optimized_gains)
 
-    # 6. Simpan Hasil ke File
-    # Praktik yang baik untuk menyimpan hasil tuning
-    np.savez('tuned_mycobot_gains.npz', **controller_gains)
-    print("\nGain optimal telah disimpan ke file 'tuned_mycobot_gains.npz'")
+        print("\nFormat untuk disalin ke skrip simulasi Anda:")
+        print("-" * 40)
+        print(f"kp_pos = {optimized_gains.kp_pos:.3f}")
+        print(f"kp_rot = {optimized_gains.kp_rot:.3f}")
+        print(f"kd_pos = {optimized_gains.kd_pos:.3f}")
+        print(f"kd_rot = {optimized_gains.kd_rot:.3f}")
+        print(f"kp_joint = {optimized_gains.kp_joint[0]:.3f}")
+        print(f"kd_joint = {optimized_gains.kd_joint[0]:.3f}")
+        print("-" * 40)
 
-    # 7. Tampilkan Grafik Hasil Tuning
-    # Memanggil metode plot_results dari KODE 1
-    print("\nMenampilkan grafik histori tuning...")
-    tuner.plot_results()
+        # 6. Simpan Hasil ke File
+        # Praktik yang baik untuk menyimpan hasil tuning
+        np.savez('tuned_mycobot_gains.npz', **controller_gains)
+        print("\nGain optimal telah disimpan ke file 'tuned_mycobot_gains.npz'")
+
+        # 7. Tampilkan Grafik Hasil Tuning
+        # Memanggil metode plot_results dari KODE 1
+        print("\nMenampilkan grafik histori tuning...")
+        tuner.plot_results()
+    else:
+        print("Optimisasi tidak menemukan solusi yang lebih baik dari nilai awal.")

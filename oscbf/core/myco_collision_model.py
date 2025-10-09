@@ -1,4 +1,4 @@
-"""Creating a link collision model for the Franka with a series of spheres of various radii"""
+"""Creating a link collision model for the Mycobot with a series of spheres of various radii"""
 
 # All positions are in link frame, not link COM frame
 
@@ -8,24 +8,31 @@
 # Radius dalam meter
 
 # Link 1 (Base/Pundak)
-link_1_pos = ((0, 0, 0.05),)
-link_1_radii = (0.04,)
+link_1_pos = ((0, 0, 0.02),
+              (0, 0, 0.06),
+              (0, 0, 0.10),)
+link_1_radii = (0.045, 0.045, 0.04)
 
 # Link 2 (Lengan Atas)
-link_2_pos = ((0, 0, 0.0), (0, 0, -0.08),)
-link_2_radii = (0.035, 0.035,)
+link_2_pos = ((0, 0, -0.02), 
+              (0, 0, -0.07),
+              (0, 0, -0.12),)
+link_2_radii = (0.035, 0.035, 0.035)
 
 # Link 3 (Siku)
-link_3_pos = ((0, 0, 0.0), (0, 0, -0.03),)
-link_3_radii = (0.03,) * 2
+link_3_pos = ((0, 0, 0.0), 
+              (0, 0, -0.03),)
+link_3_radii = (0.03, 0.03)
 
 # Link 4 (Lengan Bawah)
-link_4_pos = ((0, 0, 0.0),)
-link_4_radii = (0.03,)
+link_4_pos = ((0, 0, 0.02),
+              (0, 0, -0.03),)
+link_4_radii = (0.03, 0.03)
 
 # Link 5 (Pergelangan Tangan)
-link_5_pos = ((0, 0, -0.02),)
-link_5_radii = (0.03,)
+link_5_pos = ((0, 0, -0.02),
+              (0, 0, -0.03),)
+link_5_radii = (0.03, 0.03)
 
 # Link 6 (Flange/Tangan)
 link_6_pos = ((0, 0, 0.0),)
