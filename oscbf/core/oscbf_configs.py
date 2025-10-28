@@ -17,6 +17,7 @@ import numpy as np
 from cbfpy import CBFConfig
 
 from oscbf.core.manipulator import Manipulator
+from typing import Optional
 
 
 class OSCBFTorqueConfig(CBFConfig):
@@ -44,6 +45,10 @@ class OSCBFTorqueConfig(CBFConfig):
         rot_obj_weight: float = 1.0,
         joint_obj_weight: float = 1.0,
         compensate_centrifugal_coriolis: bool = True,
+        # init_args: tuple = (),
+        init_args: tuple = (),
+        # h_init_args: Optional[tuple] = None,
+
     ):
         assert isinstance(robot, Manipulator)
         assert isinstance(pos_obj_weight, (tuple, float)) and pos_obj_weight >= 0
@@ -66,12 +71,17 @@ class OSCBFTorqueConfig(CBFConfig):
         self.W_T_W_joint_diag = tuple(
             np.array([self.joint_space_obj_weight] * self.num_joints) ** 2
         )
+        # self.h_init_args = h_init_args
+        if init_args is None:
+            init_args = ()
 
         super().__init__(
             n=self.num_joints * 2,
             m=self.num_joints,
             u_min=-np.asarray(robot.joint_max_forces),
             u_max=np.asarray(robot.joint_max_forces),
+            init_args=init_args
+            # h_init_args=h_init_args,
         )
 
     def f(self, z, **kwargs):
@@ -120,10 +130,10 @@ class OSCBFTorqueConfig(CBFConfig):
             + M_inv.T @ J.T @ W_T_W_task @ J @ M_inv
         )
 
-    def P(self, z, u_des):
+    def P(self, z, u_des, *args, **kwargs):
         return self._P(z)
 
-    def q(self, z, u_des):
+    def q(self, z, u_des, *args, **kwargs):
         return -u_des.T @ self._P(z)
 
 
@@ -149,6 +159,8 @@ class OSCBFVelocityConfig(CBFConfig):
         pos_obj_weight: float = 1.0,
         rot_obj_weight: float = 1.0,
         joint_obj_weight: float = 1.0,
+        init_args: tuple = (),  # <-- TAMBAHKAN INI
+        # h_init_args: Optional[tuple] = None, # <-- TAMBAHKAN INI
     ):
         assert isinstance(robot, Manipulator)
         assert isinstance(pos_obj_weight, (tuple, float)) and pos_obj_weight >= 0
@@ -170,12 +182,17 @@ class OSCBFVelocityConfig(CBFConfig):
         self.W_T_W_joint_diag = tuple(
             np.array([self.joint_space_obj_weight] * self.num_joints) ** 2
         )
+        # self.h_init_args = h_init_args
+        if init_args is None:
+            init_args = ()
 
         super().__init__(
             n=self.num_joints,
             m=self.num_joints,
             u_min=-np.asarray(robot.joint_max_velocities),
             u_max=np.asarray(robot.joint_max_velocities),
+            init_args=init_args    # <-- TAMBAHKAN INI
+            # h_init_args=h_init_args, # <-- TAMBAHKAN INI
         )
 
     def f(self, z, **kwargs):
@@ -184,7 +201,23 @@ class OSCBFVelocityConfig(CBFConfig):
     def g(self, z, **kwargs):
         return jnp.eye(self.num_joints)
 
-    def _P(self, z):
+    # def _P(self, z):
+    #     q = z
+    #     transforms = self.robot.joint_to_world_transforms(q)
+    #     J = self.robot._ee_jacobian(transforms)
+    #     M = self.robot._mass_matrix(transforms)
+    #     M_inv = jnp.linalg.inv(M)
+    #     task_inertia_inv = J @ M_inv @ J.T
+    #     task_inertia = jnp.linalg.inv(task_inertia_inv)
+    #     J_bar = M_inv @ J.T @ task_inertia
+    #     J_hash = J_bar
+    #     N = jnp.eye(self.num_joints) - J_hash @ J
+    #     W_T_W_joint = jnp.diag(jnp.asarray(self.W_T_W_joint_diag))
+    #     W_T_W_task = jnp.diag(jnp.asarray(self.W_T_W_task_diag))
+
+    #     return N.T @ W_T_W_joint @ N + J.T @ W_T_W_task @ J
+
+    def _P_vel(self, z):
         q = z
         transforms = self.robot.joint_to_world_transforms(q)
         J = self.robot._ee_jacobian(transforms)
@@ -199,9 +232,9 @@ class OSCBFVelocityConfig(CBFConfig):
         W_T_W_task = jnp.diag(jnp.asarray(self.W_T_W_task_diag))
 
         return N.T @ W_T_W_joint @ N + J.T @ W_T_W_task @ J
+    
+    def P(self, z, u_des, *args, **kwargs):
+        return self._P_vel(z)
 
-    def P(self, z, u_des, **kwargs):
-        return self._P(z)
-
-    def q(self, z, u_des, **kwargs):
-        return -u_des.T @ self._P(z)
+    def q(self, z, u_des, *args, **kwargs):
+        return -u_des.T @ self._P_vel(z)

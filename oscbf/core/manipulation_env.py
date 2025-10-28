@@ -18,6 +18,7 @@ from oscbf.utils.visualization import visualize_3D_box
 from oscbf.utils.general_utils import stdout_redirected
 from oscbf.core.controllers import PoseTaskVelocityController, PoseTaskTorqueController
 from oscbf.utils.trajectory import TaskTrajectory
+from oscbf.core.ur5e_collision_model import ur5e_collision_data
 
 
 class ManipulationEnv:
@@ -81,21 +82,22 @@ class ManipulationEnv:
         assert isinstance(timestep, float) and timestep > 0
         self.client.setTimeStep(timestep)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
+
+        self.robot_collision_sphere_visual_ids = [] # Ganti nama list
+        self.robot_collision_offsets = [] # Simpan offset relatif [(link_index, [offsets]), ...]
+        self.robot_collision_radii = []   # Simpan radii [[radii_link1], [radii_link2], ...]
+
+        # Tentukan base position berdasarkan robot
         if self.robot_name == "franka":
             base_pos = [0, 0, 0]
-            if load_table:
-                self.robot_stand_id = visualize_3D_box(
-                    np.asarray([(-0.2, -0.1, -0.35), (0.1, 0.1, 0)]), rgba=(0.8, 0.8, 0.8, 1)
-                )
         elif self.robot_name == "mycobot":
             base_pos = [0.1, 0, 0.15]
-            if load_table:
-                self.robot_stand_id = visualize_3D_box(
-                    np.asarray([(-0.15, -0.15, -0.35), (0.15, 0.15, 0.15)]), rgba=(0.8, 0.8, 0.8, 1)
-                )
+        elif self.robot_name == "ur5e":
+            base_pos = [0, 0, 0]
         else:
             base_pos = [0, 0, 0]
-        
+            print(f"[WARNING] Robot '{robot_name}' tidak dikenal, menggunakan base_pos default.")
+
         self.robot = self.client.loadURDF(
             urdf,
             basePosition=base_pos,
@@ -103,6 +105,122 @@ class ManipulationEnv:
             flags=self.client.URDF_USE_INERTIA_FROM_FILE
             | self.client.URDF_MERGE_FIXED_LINKS,
         )
+        self.num_joints = self.client.getNumJoints(self.robot)
+        # Muat model kolisi spesifik untuk robot
+        collision_model_data = None
+        if self.robot_name == "franka":
+            try:
+                from oscbf.core.franka_collision_model import franka_collision_data
+                collision_model_data = franka_collision_data
+            except ImportError:
+                print("[WARNING] File franka_collision_model.py tidak ditemukan.")
+            # base_pos = [0, 0, 0]
+            if load_table:
+                self.robot_stand_id = visualize_3D_box(
+                    np.asarray([(-0.2, -0.1, -0.35), (0.1, 0.1, 0)]), rgba=(0.8, 0.8, 0.8, 1)
+                )
+        elif self.robot_name == "mycobot":
+            try:
+                from oscbf.core.myco_collision_model import mycobot_collision_data
+                collision_model_data = mycobot_collision_data
+            except ImportError:
+                print("[WARNING] File myco_collision_model.py tidak ditemukan.")
+            # base_pos = [0.1, 0, 0.15]
+            if load_table:
+                self.robot_stand_id = visualize_3D_box(
+                    np.asarray([(-0.15, -0.15, -0.35), (0.15, 0.15, 0.15)]), rgba=(0.8, 0.8, 0.8, 1)
+                )
+        elif self.robot_name == "ur5e":
+            if load_table:
+                # Use the same stand height as Franka
+                self.robot_stand_id = visualize_3D_box(
+                    np.asarray([(-0.2, -0.2, -0.35), (0.2, 0.2, 0)]), rgba=(0.8, 0.8, 0.8, 1)
+                )
+        else:
+            base_pos = [0, 0, 0]
+            print(f"[WARNING] Model kolisi tidak didefinisikan untuk robot: {robot_name}")
+        
+        # BAGIAN 1: Perbaikan di __init__ (mulai dari baris ~80)
+        # Ganti bagian pembuatan visual shapes dengan kode ini:
+
+        if collision_model_data is not None:
+            positions_per_link = collision_model_data.get("positions", [])
+            radii_per_link = collision_model_data.get("radii", [])
+            
+            # Pastikan data konsisten
+            num_robot_links = self.num_joints
+            
+            if len(positions_per_link) != num_robot_links or len(radii_per_link) != num_robot_links:
+                print(f"[ERROR] Jumlah link di model kolisi ({len(positions_per_link)}) tidak cocok " \
+                    f"dengan jumlah sendi robot ({num_robot_links}). Visualisasi bola dilewati.")
+            else:
+                print("Membuat visual shape untuk bola kolisi robot...")
+                total_spheres_created = 0
+                
+                # Loop melalui setiap link
+                for link_pybullet_index in range(num_robot_links):
+                    link_offsets = positions_per_link[link_pybullet_index]
+                    link_radii = radii_per_link[link_pybullet_index]
+
+                    # Validasi data link
+                    if len(link_offsets) == 0:  # Skip empty links
+                        self.robot_collision_offsets.append((link_pybullet_index, np.array([])))
+                        self.robot_collision_radii.append(np.array([]))
+                        continue
+                        
+                    if len(link_offsets) != len(link_radii):
+                        print(f"[WARNING] Jumlah offset ({len(link_offsets)}) dan radii ({len(link_radii)}) " \
+                            f"tidak cocok untuk link index {link_pybullet_index}. Melewati link ini.")
+                        self.robot_collision_offsets.append((link_pybullet_index, np.array([])))
+                        self.robot_collision_radii.append(np.array([]))
+                        continue
+                    
+                    # Konversi ke numpy array dengan shape yang benar
+                    link_offsets_array = np.array(link_offsets, dtype=np.float64)
+                    if link_offsets_array.ndim == 1:
+                        link_offsets_array = link_offsets_array.reshape(1, -1)
+                    
+                    # Simpan data offset dan radii
+                    self.robot_collision_offsets.append((link_pybullet_index, link_offsets_array))
+                    self.robot_collision_radii.append(np.array(link_radii, dtype=np.float64))
+
+                    if self.collision_data:
+                        print("[DEBUG ENV] Data kolisi DITEMUKAN saat inisialisasi env.")
+                        # ... (kode yang membuat self.robot_collision_offsets) ...
+                    else:
+                        print("[DEBUG ENV] Data kolisi TIDAK DITEMUKAN saat inisialisasi env.")
+
+                    # Buat visual shapes untuk setiap bola di link ini
+                    for radius in link_radii:
+                        if radius <= 0: 
+                            continue
+                        
+                        vis_id = self.client.createVisualShape(
+                            self.client.GEOM_SPHERE,
+                            radius=radius,
+                            rgbaColor=[0, 1, 0, 0.4]  # Hijau semi-transparan
+                        )
+                        if vis_id < 0: 
+                            continue
+
+                        # Buat body dummy di origin (akan diupdate di step())
+                        body_id = self.client.createMultiBody(
+                            baseMass=0, 
+                            baseCollisionShapeIndex=-1, 
+                            baseVisualShapeIndex=vis_id,
+                            basePosition=[0, 0, -10],  # Mulai di bawah (tidak terlihat)
+                            useMaximalCoordinates=False
+                        )
+                        if body_id < 0: 
+                            continue
+                        
+                        self.robot_collision_sphere_visual_ids.append(body_id)
+                        total_spheres_created += 1
+                        
+                print(f"Berhasil membuat {total_spheres_created} visual shape untuk {num_robot_links} link.")
+        else:
+            print("[INFO] Tidak ada data model kolisi, visualisasi bola dilewati.")
+
         assert isinstance(load_table, bool)
         table_z_offset = -0.35
         if load_table:
@@ -121,7 +239,7 @@ class ManipulationEnv:
         if bg_color is not None:
             assert len(bg_color) == 3
             self.client.configureDebugVisualizer(rgbBackground=bg_color)
-        self.num_joints = self.client.getNumJoints(self.robot)
+        
         # "Unlock" the joints
         self.client.setJointMotorControlArray(
             self.robot,
@@ -148,7 +266,7 @@ class ManipulationEnv:
                 [self.xyz_min, self.xyz_max], rgba=(0, 1, 0, 0.3)
             )
         else:
-            self.box_id = None
+            self.box_id = None 
             self.xyz_min = None
             self.xyz_max = None
 
@@ -204,6 +322,8 @@ class ManipulationEnv:
                 self.client.resetJointState(
                     self.robot, joint_index, q_init[joint_index]
                 )
+        # Update posisi bola kolisi sesuai konfigurasi awal robot
+        self.update_collision_sphere_visuals()
 
         # Handle collision info
         if collision_data is not None:
@@ -240,6 +360,58 @@ class ManipulationEnv:
         self.client.setGravity(0, 0, -9.81)
         self.dt = self.client.getPhysicsEngineParameters()["fixedTimeStep"]
         self.t = 0
+
+    def update_collision_sphere_visuals(self):
+        """Update posisi visual bola kolisi berdasarkan konfigurasi robot saat ini"""
+        if not hasattr(self, 'robot_collision_sphere_visual_ids') or not self.robot_collision_sphere_visual_ids:
+            return
+        
+        current_visual_sphere_index = 0
+        
+        for link_index, offsets in self.robot_collision_offsets:
+            if offsets.shape[0] == 0:
+                continue
+            
+            try:
+                link_state = self.client.getLinkState(
+                    self.robot,
+                    link_index,
+                    computeLinkVelocity=0,
+                    computeForwardKinematics=1
+                )
+                
+                if link_state is None:
+                    current_visual_sphere_index += offsets.shape[0]
+                    continue
+                
+                link_world_pos = np.array(link_state[4])
+                link_world_orn_xyzw = link_state[5]
+                
+                link_world_rot_matrix = np.array(
+                    self.client.getMatrixFromQuaternion(link_world_orn_xyzw)
+                ).reshape(3, 3)
+                
+                world_offsets = offsets @ link_world_rot_matrix.T
+                sphere_world_positions = link_world_pos + world_offsets
+                
+                num_spheres_on_link = offsets.shape[0]
+                for i in range(num_spheres_on_link):
+                    if current_visual_sphere_index >= len(self.robot_collision_sphere_visual_ids):
+                        break
+                    
+                    sphere_body_id = self.robot_collision_sphere_visual_ids[current_visual_sphere_index]
+                    
+                    self.client.resetBasePositionAndOrientation(
+                        sphere_body_id,
+                        sphere_world_positions[i].tolist(),
+                        [0, 0, 0, 1]
+                    )
+                    current_visual_sphere_index += 1
+                    
+            except Exception as e:
+                print(f"[WARNING] Gagal update bola untuk link {link_index}: {e}")
+                current_visual_sphere_index += offsets.shape[0]
+                continue
 
     def get_joint_state(self) -> Array:
         joint_angles = []
@@ -327,6 +499,9 @@ class ManipulationEnv:
     def step(self):
         self.client.stepSimulation()
         self.t += self.dt
+        
+        self.update_collision_sphere_visuals()
+
         if self.real_time:
             time.sleep(max(0, self.dt - (time.time() - self.last_time)))
             self.last_time = time.time()
@@ -412,6 +587,89 @@ class MyCobotVelocityControlEnv(ManipulationEnv):
             timestep=timestep,
             load_table=load_table,
         )
+
+class UR5eTorqueControlEnv(ManipulationEnv):
+    """Simulation environment for Mycobot end-effector pose tracking, with torque control"""
+
+    def __init__(
+        self,
+        xyz_min=None,
+        xyz_max=None,
+        target_pos=(0.5, 0, 0.5), #Perlu disesuaikan target awal
+        q_init=(0, -np.pi/2, 0, -np.pi/2, 0, 0), # Posisi awal UR5e
+        traj=None,
+        collision_data=None,
+        wb_xyz_min=None,
+        wb_xyz_max=None,
+        bg_color=None,
+        load_floor=True,
+        real_time=False,
+        timestep=1 / 240, 
+        load_table=False,
+        pybullet_client_mode=pybullet.GUI, #HANYA SAAT TUNING PID, HEADLESS PYBULLET 
+    ):
+        super().__init__(
+            "oscbf/assets/ur5e/ur5e.urdf",
+            "ur5e",
+            "torque",
+            xyz_min,
+            xyz_max,
+            target_pos,
+            q_init,
+            traj,
+            collision_data,
+            wb_xyz_min,
+            wb_xyz_max,
+            bg_color,
+            load_floor,
+            qdot_max=np.array([3.14] * 6),
+            tau_max=np.array([150.0, 150.0, 150.0, 28.0, 28.0, 28.0]),
+            real_time=real_time,
+            timestep=timestep,
+            load_table=load_table,
+            pybullet_client_mode=pybullet_client_mode #TAMBAHAN AGAR HEADLESS
+        )
+
+class UR5eVelocityControlEnv(ManipulationEnv):
+    """Simulation environment for UR5e end-effector pose tracking, with velocity control"""
+
+    def __init__(
+        self,
+        xyz_min=None,
+        xyz_max=None,
+        target_pos=(0.5, 0, 0.5),
+        q_init=(0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0), # Natural folded pose
+        traj=None,
+        collision_data=None,
+        wb_xyz_min=None,
+        wb_xyz_max=None,
+        bg_color=None,
+        load_floor=True,
+        real_time=False,
+        timestep=1 / 240, 
+        load_table=False,
+    ):
+        super().__init__(
+            "oscbf/assets/ur5e/ur5e.urdf",
+            "ur5e",
+            "velocity",
+            xyz_min,
+            xyz_max,
+            target_pos,
+            q_init,
+            traj,
+            collision_data,
+            wb_xyz_min,
+            wb_xyz_max,
+            bg_color,
+            load_floor,
+            qdot_max=np.array([3.14] * 6),
+            tau_max=np.array([150.0, 150.0, 150.0, 28.0, 28.0, 28.0]),
+            real_time=real_time,
+            timestep=timestep,
+            load_table=load_table,
+        )
+
 
 class FrankaTorqueControlEnv(ManipulationEnv):
     """Simulation environment for Franka end-effector pose tracking, with torque control"""

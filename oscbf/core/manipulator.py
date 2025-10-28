@@ -11,6 +11,7 @@ import numpy as np
 from oscbf.utils.urdf_parser import parse_urdf
 from oscbf.core.franka_collision_model import franka_collision_data
 from oscbf.core.myco_collision_model import mycobot_collision_data
+from oscbf.core.ur5e_collision_model import ur5e_collision_data
 
 
 def tuplify(arr):
@@ -506,22 +507,42 @@ class Manipulator:
         joint_transforms = self.joint_to_world_transforms(q)
         return self._link_collision_data(joint_transforms)
 
-    # TODO figure out a more efficient way to do this without the loop!!
     def _link_collision_data(self, joint_transforms: Array) -> Array:
         """Helper function: Compute the collision data for all links given the joint transforms"""
         if not self.has_collision_data:
             return jnp.array([])
-        pts = []
-        radii = []
+
+        all_pts = []
+        all_radii = []
+
         for i in range(self.num_joints):
-            # print(f"Link {i+1}: Memproses posisi = {self.collision_positions[i]}") #DEBUGGING
-            pts.append(
-                transform_points(joint_transforms[i], self.collision_positions[i])
-            )
-            radii.append(jnp.asarray(self.collision_radii[i]))
-        pts = jnp.vstack(pts)
-        radii = jnp.concatenate(radii).reshape(-1, 1)
-        return jnp.hstack([pts, radii])
+            # The collision geometries are defined with respect to the link frame.
+            # For a serial chain, the frame of link i is the same as the frame of joint i.
+            # joint_transforms[i] is the transform from world to the frame of joint i.
+            link_collision_points = jnp.asarray(self.collision_positions[i])
+            link_collision_radii = jnp.asarray(self.collision_radii[i])
+
+            if link_collision_points.ndim != 2 or link_collision_points.shape[1] != 3:
+                continue
+
+            # Transform points from link frame to world frame
+            world_pts = transform_points(joint_transforms[i], link_collision_points)
+
+            all_pts.append(world_pts)
+            all_radii.append(link_collision_radii)
+
+        if not all_pts:
+            return jnp.array([])
+
+        # Combine points and radii from all links
+        pts_cat = jnp.vstack(all_pts)
+        radii_cat = jnp.concatenate(all_radii).reshape(-1, 1)
+
+        if pts_cat.shape[0] != radii_cat.shape[0]:
+            # This should not happen if collision data is correct
+            return jnp.array([])
+
+        return jnp.hstack([pts_cat, radii_cat])
 
     def _get_linear_jacobians_transposed(self, joint_transforms: Array) -> Array:
         """Helper function: Compute an array containing the linear jacobians Jv for every link
@@ -775,7 +796,8 @@ def load_mycobot() -> Manipulator:
     """Create a Manipulator object for the Mycobot"""
 
     return Manipulator.from_urdf(
-        "oscbf/assets/mycobot/mycobot_urdf.urdf",
+        #Default: "oscbf/assets/mycobot/mycobot_urdf.urdf"
+        "oscbf/assets/mycobot/mycobot_urdf2.urdf",
         ee_offset=np.block(
             [
                 [np.eye(3), np.reshape(np.array([0.0, 0.0, 0.0]), (-1, 1))],
@@ -783,6 +805,17 @@ def load_mycobot() -> Manipulator:
             ]
         ),
         collision_data=mycobot_collision_data,
+    )
+
+def load_ur5e() -> Manipulator:
+    """Create a Manipulator object for the UR5e"""
+
+    # ur5e_collision_data = None # Ganti jika Anda membuatnya
+
+    return Manipulator.from_urdf(
+        "oscbf/assets/ur5e/ur5e.urdf", # Path ke URDF baru Anda
+        ee_offset=np.eye(4), # Offset default, sesuaikan jika perlu
+        collision_data=ur5e_collision_data,
     )
 
 def main():
