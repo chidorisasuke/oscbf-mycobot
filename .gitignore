@@ -1,5 +1,18 @@
-*.egg-info/*
-__pycache__
-.python-version
-site/
+# Folder Cache dan Build
+build/
+dist/
+*.egg-info/
+__pycache__/
+
+# File backup
+*LAMA.py
+*LAMA.urdf
+
+# File hasil output
+*.png
+*.jpg
+*.mp4
+
+# File spesifik OS/Editor
+.DS_Store
 .vscode/
