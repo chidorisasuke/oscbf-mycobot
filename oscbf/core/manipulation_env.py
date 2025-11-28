@@ -76,6 +76,7 @@ class ManipulationEnv:
         self.control_mode = control_mode
         assert isinstance(traj, TaskTrajectory) or traj is None
         self.traj = traj
+        self.collision_data = collision_data
         with stdout_redirected():
             # self.client: pybullet = BulletClient(pybullet.GUI)
             self.client: pybullet = BulletClient(pybullet_client_mode)
@@ -131,13 +132,18 @@ class ManipulationEnv:
                     np.asarray([(-0.15, -0.15, -0.35), (0.15, 0.15, 0.15)]), rgba=(0.8, 0.8, 0.8, 1)
                 )
         elif self.robot_name == "ur5e":
+            try:
+                from oscbf.core.ur5e_collision_model import ur5e_collision_data
+                collision_model_data = ur5e_collision_data
+                print("[INFO] Model kolisi UR5e berhasil dimuat.")
+            except ImportError:
+                print("[WARNING] File ur5e_collision_model.py tidak ditemukan.")
+            # --------------------------
             if load_table:
-                # Use the same stand height as Franka
                 self.robot_stand_id = visualize_3D_box(
                     np.asarray([(-0.2, -0.2, -0.35), (0.2, 0.2, 0)]), rgba=(0.8, 0.8, 0.8, 1)
                 )
         else:
-            base_pos = [0, 0, 0]
             print(f"[WARNING] Model kolisi tidak didefinisikan untuk robot: {robot_name}")
         
         # BAGIAN 1: Perbaikan di __init__ (mulai dari baris ~80)
@@ -254,7 +260,7 @@ class ManipulationEnv:
             globalScaling=0.2,
         )
         self.target_mass = 1.0
-        self.client.changeVisualShape(self.target, -1, rgbaColor=[1, 0, 0, 0.6])
+        self.client.changeVisualShape(self.target, -1, rgbaColor=[1, 0, 0, 0.0])
         self.client.changeDynamics(self.target, -1, linearDamping=10, angularDamping=30)
 
         # If this environment is set up for safe-set-invariance, visualize the safe box

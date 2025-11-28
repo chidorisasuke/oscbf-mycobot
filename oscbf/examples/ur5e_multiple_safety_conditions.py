@@ -205,12 +205,102 @@ def main():
     def compute_control_jit(z, z_des):
         return compute_control(robot, osc_controller, cbf, z, z_des)
 
-    while True:
-        joint_state = env.get_joint_state()
-        ee_state_des = env.get_desired_ee_state()
-        tau = compute_control_jit(joint_state, ee_state_des)
-        env.apply_control(tau)
-        env.step()
+    times, q_data, qdot_data, tau_data, ee_pos_data, ee_pos_des_data, h_data = [], [], [], [], [], [], []
+
+    try:
+        print("Starting simulation...")
+        while env.t < 10.0:
+            joint_state = env.get_joint_state()
+            ee_state_des = env.get_desired_ee_state()
+            tau = compute_control_jit(joint_state, ee_state_des)
+            env.apply_control(tau)
+            env.step()
+            
+            # Store data
+            times.append(env.t)
+            q_data.append(joint_state[:robot.num_joints])
+            qdot_data.append(joint_state[robot.num_joints:])
+            tau_data.append(tau)
+            ee_pos_data.append(robot.ee_position(joint_state[:robot.num_joints]))
+            ee_pos_des_data.append(ee_state_des[:3])
+            h_data.append(config.h_2(joint_state))
+
+    except KeyboardInterrupt:
+        print("\nSimulation stopped by user.")
+
+    finally:
+        print("Simulation finished. Plotting data...")
+        import matplotlib.pyplot as plt
+
+        times = np.array(times)
+        q_data = np.array(q_data)
+        tau_data = np.array(tau_data)
+        ee_pos_data = np.array(ee_pos_data)
+        ee_pos_des_data = np.array(ee_pos_des_data)
+        h_data = np.array(h_data)
+
+        plt.figure(figsize=(15, 10))
+        plt.suptitle('UR5e Simulation Results', fontsize=16)
+
+        # Plot EE position tracking X
+        plt.subplot(3, 2, 1)
+        plt.plot(times, ee_pos_data[:, 0], label='Actual X')
+        plt.plot(times, ee_pos_des_data[:, 0], label='Desired X', linestyle='--')
+        plt.title('End-Effector Position (X)')
+        plt.ylabel('X [m]')
+        plt.grid(True)
+        plt.legend()
+
+        # Plot joint positions
+        plt.subplot(3, 2, 2)
+        for j in range(robot.num_joints):
+            plt.plot(times, q_data[:, j], label=f'Joint {j+1}')
+        plt.title('Joint Positions')
+        plt.ylabel('Angle [rad]')
+        plt.grid(True)
+        plt.legend()
+
+        # Plot EE position tracking Y
+        plt.subplot(3, 2, 3)
+        plt.plot(times, ee_pos_data[:, 1], label='Actual Y')
+        plt.plot(times, ee_pos_des_data[:, 1], label='Desired Y', linestyle='--')
+        plt.title('End-Effector Position (Y)')
+        plt.ylabel('Y [m]')
+        plt.grid(True)
+        plt.legend()
+
+        # Plot torques
+        plt.subplot(3, 2, 4)
+        for j in range(robot.num_joints):
+            plt.plot(times, tau_data[:, j], label=f'Joint {j+1}')
+        plt.title('Control Torques')
+        plt.ylabel('Torque [Nm]')
+        plt.grid(True)
+        plt.legend()
+
+        # Plot EE position tracking Z
+        plt.subplot(3, 2, 5)
+        plt.plot(times, ee_pos_data[:, 2], label='Actual Z')
+        plt.plot(times, ee_pos_des_data[:, 2], label='Desired Z', linestyle='--')
+        plt.title('End-Effector Position (Z)')
+        plt.xlabel('Time [s]')
+        plt.ylabel('Z [m]')
+        plt.grid(True)
+        plt.legend()
+        
+        # Plot CBF values
+        plt.subplot(3, 2, 6)
+        if h_data.size > 0:
+            plt.plot(times, np.min(h_data, axis=1), label='Min h(x)')
+            plt.hlines(0.0, 0, times[-1], colors='r', linestyles='--', label='Safety Boundary')
+        plt.title('Minimum CBF Value (h)')
+        plt.xlabel('Time [s]')
+        plt.ylabel('h_min')
+        plt.grid(True)
+        plt.legend()
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.show()
 
 
 if __name__ == "__main__":

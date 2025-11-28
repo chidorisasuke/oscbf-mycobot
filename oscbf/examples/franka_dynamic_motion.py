@@ -173,8 +173,8 @@ def main(control_method="torque"):
 
     robot = load_panda()
     # pos untuk Franka
-    pos_min = (0.25, -0.25, 0.25)
-    pos_max = (0.65, 0.25, 0.65)
+    pos_min = np.array([0.20, -0.25, 0.25])
+    pos_max = np.array([0.65, 0.25, 0.65])
 
     # NOTE: This term has a noticeable impact on the performance for this demo.
     # It's often neglected due to computational demands and model error
@@ -291,6 +291,16 @@ def main(control_method="torque"):
         tau = compute_control(q_qdot, z_zdot_ee_des)
         env.apply_control(tau)
         env.step()
+
+        # DEBUG: Cek pelanggaran batas ruang kerja
+        q = q_qdot[:robot.num_joints]
+        current_ee_pos = robot.ee_position(q)
+        
+        if np.any(current_ee_pos < pos_min) or np.any(current_ee_pos > pos_max):
+            print(f"\033[91m[DEBUG @ {env.t:.2f}s] PERINGATAN: End-effector KELUAR dari kotak aman!\033[0m")
+            print(f"  - Posisi EE: {np.round(current_ee_pos, 3)}")
+            print(f"  - Batas Min: {pos_min}")
+            print(f"  - Batas Max: {pos_max}")
 
 
 if __name__ == "__main__":

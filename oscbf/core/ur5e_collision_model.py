@@ -42,7 +42,7 @@ wrist_1_spheres_rad = (0.06,)
 
 # Link 5: wrist_2_link
 wrist_2_spheres_pos = (
-    [0.0, 0.05, -0.0997],   # Centered around wrist 2 body
+    [0.0, 0.0, -0.0997],   # Centered around wrist 2 body
 )
 wrist_2_spheres_rad = (0.06,)
 

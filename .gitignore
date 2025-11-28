@@ -4,14 +4,19 @@ dist/
 *.egg-info/
 __pycache__/
 
-# File backup
+# File backup (yang berakhiran LAMA)
 *LAMA.py
 *LAMA.urdf
 
-# File hasil output
+# File hasil output dan eksperimen
 *.png
 *.jpg
+*.jpeg
 *.mp4
+*.pkl
+*.json
+*.npz
+experiment/results_*/
 
 # File spesifik OS/Editor
 .DS_Store

@@ -592,9 +592,13 @@ def merge_inertia(link1, link2):
     # Set the properties of the combined link
     link1.inertial.mass = combined_mass
     link1.inertial.origin[:3, 3] = combined_com
-    link1.inertial.origin[:3, :3] = np.eye(
-        3
-    )  # Reset rotation to identity since it's now aligned
+    # link1.inertial.origin[:3, :3] = np.eye(
+    #     3
+    # )  # Reset rotation to identity since it's now aligned
+    if combined_mass > 0:
+        # Recompute orientation based on principal axes
+        U, S, Vt = np.linalg.svd(combined_inertia)
+        link1.inertial.origin[:3, :3] = U  # Principal axes
     link1.inertial.inertia = combined_inertia
 
 

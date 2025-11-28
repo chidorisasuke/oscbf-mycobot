@@ -179,7 +179,7 @@ def main(control_method="torque"):
 
     # NOTE: This term has a noticeable impact on the performance for this demo.
     # It's often neglected due to computational demands and model error
-    compensate_centrifugal_coriolis = False
+    compensate_centrifugal_coriolis = True
 
     torque_config = EESafeSetTorqueConfig(
         robot,
@@ -257,7 +257,6 @@ def main(control_method="torque"):
         n_joints=robot.num_joints,
         kp_task=np.array([kp_pos, kp_pos, kp_pos, kp_rot, kp_rot, kp_rot]),
         kp_joint=kp_joint,
-        kd_joint=kd_joint,
         # Note: velocity limits will be enforced via the QP
         # because we don't want to clip the values before the QP
         qdot_min=None,
@@ -280,6 +279,7 @@ def main(control_method="torque"):
         return compute_velocity_control(
             robot, osc_velocity_controller, velocity_cbf, z, z_ee_des
         )
+    time_log, h_log, torque_log, position_log, velocity_log = [], [], [], [], []
 
     if control_method == "torque":
         compute_control = compute_torque_control_jit
@@ -288,7 +288,6 @@ def main(control_method="torque"):
     else:
         raise ValueError(f"Invalid control method: {control_method}")
     
-    time_log, h_log, torque_log, position_log, velocity_log = [], [], [], [], []
 
     try:
         simulation_duration = 20
@@ -299,7 +298,8 @@ def main(control_method="torque"):
             env.apply_control(tau)
             env.step()
 
-            time_log.append(env.t)
+            current_time = env.t
+            
 
             q = q_qdot[:robot.num_joints]
             q_qdot = q_qdot[robot.num_joints:]
@@ -313,57 +313,123 @@ def main(control_method="torque"):
                 h_values = velocity_config.h_1(q_qdot)
                 torque_log.append(np.zeros_like(q))
             
-            h_log.append(h_values)
-    
+            if h_values is not None:
+                h_value_np = np.asarray(h_values)
+                time_log.append(current_time)
+                h_log.append(h_value_np)
+    except KeyboardInterrupt:
+        print("\nSimulasi dihentikan oleh pengguna.")
     finally:
         print("Simulation finished. Plotting data...")
-        # Konversi list ke numpy array
-        h_log = np.array(h_log)
-        torque_log = np.array(torque_log)
-        position_log = np.array(position_log)
-        velocity_log = np.array(velocity_log)
+        
+        if not time_log or not h_log:
+            print("Tidak ada data h(z) yang tercatat untuk diplot.")
+        else:
+            time_np = np.array(time_log)
+            h_np = np.vstack(h_log) # Tumpuk list of arrays h menjadi (N, 6)
 
-        # Buat 4 subplot
-        fig, axs = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
-        fig.suptitle('Analisis Simulasi Robot Franka Panda', fontsize=16)
+            fig, ax = plt.subplots(1, 1, figsize=(12, 4)) # Ukuran disesuaikan
 
-        # Plot 1: Evolusi Batasan Keamanan (h(z))
-        constraint_labels = ["X max", "Y max", "Z max", "X min", "Y min", "Z min"]
-        for i in range(h_log.shape[1]):
-            axs[0].plot(time_log, h_log[:, i], label=constraint_labels[i])
-        axs[0].axhline(0, color='r', linestyle='--', label='Batas Aman (h=0)')
-        axs[0].set_title('Evolusi Batasan Keamanan (h(z))')
-        axs[0].set_ylabel('Nilai h(z)')
-        axs[0].grid(True)
-        axs[0].legend(fontsize='small')
+            if h_np.ndim == 2 and h_np.shape[1] == 6:
+                labels = ["X max - x", "Y max - y", "Z max - z", 
+                        "x - X min", "y - Y min", "z - Z min"]
+                # Gunakan colormap agar warna berbeda
+                colors = plt.cm.viridis(np.linspace(0, 1, 6)) 
+                for i in range(6):
+                    ax.plot(time_np, h_np[:, i], label=labels[i], color=colors[i], alpha=0.9, linewidth=1.5)
+            else: 
+                print(f"[WARNING] Unexpected h(z) data shape: {h_np.shape}. Plotting as generic lines.")
+                # Fallback plotting jika shape tidak (N, 6)
+                num_lines = h_np.shape[1] if h_np.ndim == 2 else 1
+                h_plot = h_np if h_np.ndim == 2 else h_np.reshape(-1,1)
+                for i in range(num_lines):
+                    ax.plot(time_np, h_plot[:,i], label=f'h_{i+1}')
 
-        # Plot 2: Torsi Sendi (Torque)
-        for i in range(torque_log.shape[1]):
-            axs[1].plot(time_log, torque_log[:, i], label=f'Sendi {i+1}')
-        axs[1].set_title('Perintah Torsi Aman (Γ*)')
-        axs[1].set_ylabel('Torsi (Nm)')
-        axs[1].grid(True)
-        axs[1].legend(fontsize='small')
+            # Garis batas aman h=0
+            ax.axhline(0, color='r', linestyle='--', linewidth=2, label='Batas Aman (h=0)')
 
-        # Plot 3: Kecepatan Sendi (Velocity)
-        for i in range(velocity_log.shape[1]):
-            axs[2].plot(time_log, velocity_log[:, i], label=f'Sendi {i+1}')
-        axs[2].set_title('Kecepatan Sendi (q_dot)')
-        axs[2].set_ylabel('Kecepatan (rad/s)')
-        axs[2].grid(True)
-        axs[2].legend(fontsize='small')
+            # Pengaturan Plot
+            ax.set_xlabel("Waktu (s)")
+            ax.set_ylabel("Nilai h(z)")
+            ax.set_title(f"Evolusi Batasan Keamanan (Franka Panda - {control_method.title()} Control)")
+            ax.grid(True)
+            ax.legend(fontsize='small', loc='center left', bbox_to_anchor=(1, 0.5)) # Legenda di luar
 
-        # Plot 4: Posisi Sendi (Position)
-        for i in range(position_log.shape[1]):
-            axs[3].plot(time_log, position_log[:, i], label=f'Sendi {i+1}')
-        axs[3].set_title('Posisi Sendi (q)')
-        axs[3].set_ylabel('Posisi (rad)')
-        axs[3].set_xlabel('Waktu (s)')
-        axs[3].grid(True)
-        axs[3].legend(fontsize='small')
+            # Atur batas Y agar fokus di dekat 0, tapi beri ruang lihat osilasi
+            min_h = np.min(h_np) if h_np.size > 0 else -0.1
+            max_h = np.max(h_np) if h_np.size > 0 else 1.0
+            ax.set_ylim(min(min_h - 0.1, -0.2), max(max_h + 0.2, 0.6)) 
 
-        plt.tight_layout(rect=[0, 0, 1, 0.96])
-        plt.show()
+            plt.tight_layout(rect=[0, 0, 0.85, 1]) # Beri ruang untuk legenda
+            plt.show() # Tampilkan plot
+
+        # Disconnect PyBullet
+        if 'env' in locals() and hasattr(env, 'client') and env.client.isConnected():
+            try:
+                env.client.disconnect()
+                print("PyBullet disconnected.")
+            except Exception as e:
+                print(f"Error disconnecting PyBullet: {e}")
+        
+#         # Konversi list ke numpy array
+#         h_log = np.array(h_log)
+#         torque_log = np.array(torque_log)
+#         position_log = np.array(position_log)
+#         velocity_log = np.array(velocity_log)
+
+#         # Buat 4 subplot
+#         fig, axs = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
+#         fig.suptitle('Analisis Simulasi Robot Franka Panda', fontsize=16)
+
+#         # Plot 1: Evolusi Batasan Keamanan (h(z))
+#         constraint_labels = ["X max", "Y max", "Z max", "X min", "Y min", "Z min"]
+        
+#         # Kustomisasi plot agar terlihat seperti gambar
+#         # Menggunakan colormap Biru untuk garis
+#         num_lines = h_log.shape[1]
+#         colors = plt.cm.Blues(np.linspace(0.4, 1, num_lines))
+
+#         for i in range(num_lines):
+#             axs[0].plot(time_log, h_log[:, i], color=colors[i])
+
+#         # Menambahkan garis putus-putus hitam di h=0
+#         axs[0].axhline(0, color='k', linestyle='--')
+
+#         # Mengarsir wilayah tidak aman (h<0) dengan warna merah
+#         ymin, _ = axs[0].get_ylim()
+#         axs[0].axhspan(ymin, 0, facecolor='mistyrose', alpha=0.5, zorder=0)
+
+#         axs[0].set_title('Evolusi Batasan Keamanan (h(z))')
+#         axs[0].set_ylabel('Nilai h(z)')
+#         axs[0].grid(False)
+
+#         # Plot 2: Torsi Sendi (Torque)
+#         for i in range(torque_log.shape[1]):
+#             axs[1].plot(time_log, torque_log[:, i], label=f'Sendi {i+1}')
+#         axs[1].set_title('Perintah Torsi Aman (Γ*)')
+#         axs[1].set_ylabel('Torsi (Nm)')
+#         axs[1].grid(True)
+#         axs[1].legend(fontsize='small')
+
+#         # Plot 3: Kecepatan Sendi (Velocity)
+#         for i in range(velocity_log.shape[1]):
+#             axs[2].plot(time_log, velocity_log[:, i], label=f'Sendi {i+1}')
+#         axs[2].set_title('Kecepatan Sendi (q_dot)')
+#         axs[2].set_ylabel('Kecepatan (rad/s)')
+#         axs[2].grid(True)
+#         axs[2].legend(fontsize='small')
+
+#         # Plot 4: Posisi Sendi (Position)
+#         for i in range(position_log.shape[1]):
+#             axs[3].plot(time_log, position_log[:, i], label=f'Sendi {i+1}')
+#         axs[3].set_title('Posisi Sendi (q)')
+#         axs[3].set_ylabel('Posisi (rad)')
+#         axs[3].set_xlabel('Waktu (s)')
+#         axs[3].grid(True)
+#         axs[3].legend(fontsize='small')
+
+#         plt.tight_layout(rect=[0, 0, 1, 0.96])
+#         plt.show()
         
 
 if __name__ == "__main__":

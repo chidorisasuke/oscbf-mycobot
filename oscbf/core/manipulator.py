@@ -797,7 +797,7 @@ def load_mycobot() -> Manipulator:
 
     return Manipulator.from_urdf(
         #Default: "oscbf/assets/mycobot/mycobot_urdf.urdf"
-        "oscbf/assets/mycobot/mycobot_urdf2.urdf",
+        "oscbf/assets/mycobot/mycobot_urdf.urdf",
         ee_offset=np.block(
             [
                 [np.eye(3), np.reshape(np.array([0.0, 0.0, 0.0]), (-1, 1))],
@@ -810,10 +810,15 @@ def load_mycobot() -> Manipulator:
 def load_ur5e() -> Manipulator:
     """Create a Manipulator object for the UR5e"""
 
+    import os
+    # Construct the path relative to this file
+    current_dir = os.path.dirname(__file__)
+    urdf_path = os.path.join(current_dir, "..", "assets", "ur5e", "ur5e.urdf")
+
     # ur5e_collision_data = None # Ganti jika Anda membuatnya
 
     return Manipulator.from_urdf(
-        "oscbf/assets/ur5e/ur5e.urdf", # Path ke URDF baru Anda
+        urdf_path, # Path ke URDF baru Anda
         ee_offset=np.eye(4), # Offset default, sesuaikan jika perlu
         collision_data=ur5e_collision_data,
     )
@@ -821,11 +826,12 @@ def load_ur5e() -> Manipulator:
 def main():
     # Quick validation that the manipulator class works
     # robot = load_panda()
-    robot = load_mycobot()
+    # robot = load_mycobot()
+    robot = load_ur5e()
     q = jnp.zeros(robot.num_joints)
     qdot = 0.1 * jnp.ones(robot.num_joints)
     np.set_printoptions(precision=3, suppress=True)
-    print("\nTesting Franka Panda:")
+    print("\nTesting UR5e:")
     print("\nMass Matrix: ")
     print(robot.mass_matrix(q))
     print("\nGravity Vector:")
@@ -836,6 +842,78 @@ def main():
     print(robot.ee_jacobian(q))
     print("\nEE Jacobian Derivative:")
     print(robot.ee_jacobian_derivative(q, qdot))
+
+    # === STEP 1.1: VERIFY COM POSITIONS ===
+    q_test = jnp.array([0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0])  # Pose extended
+
+    print("\n=== Debugging Gravity Vector ===")
+    g_vec = robot.gravity_vector(q_test)
+    print(f"Gravity torques: {g_vec}")
+    com_positions = robot.link_com_positions(q_test)
+    for i, com in enumerate(com_positions):
+        # Coba dapatkan nama link dari parser (jika memungkinkan)
+        # Ini mungkin perlu modifikasi di parser Anda
+        # link_name = f"Link {i}" # Default
+        # if hasattr(robot, '_link_names'): # Contoh jika parser menyimpannya
+        #     link_name = robot._link_names[i]
+        print(f"Link {i}: COM at {com}")
+    # Cross-check visual: Di pose extended (q_test), link 2 (upper_arm) CoM
+    # seharusnya berada kira-kira di koordinat world (X sedikit positif, Y=0, Z sekitar 0.16 + 0.11)
+    print("(Cross-check: Link 2 COM should be roughly around X=positive, Y=0, Z=mid-height)")
+
+    # === STEP 1.3: COMPARE GRAVITY TORQUE ===
+    print("\n=== Comparing Calculated vs. Expected Gravity Torque (Joint 2 at q_test) ===")
+    try:
+        # Perkiraan massa link utama (dari URDF Anda)
+        m_shoulder = 3.761
+        m_upper_arm = 8.058
+        m_forearm = 2.846
+        m_wrist1 = 1.37
+        m_wrist2 = 1.3
+        m_wrist3 = 0.365
+        # Perkiraan CoM dan panjang link (perlu verifikasi dari URDF atau datasheet)
+        # Asumsi kasar: CoM link utama berada di tengah panjang link
+        l_upper_arm = 0.425 # Panjang upper_arm
+        com_upper_arm_local_z = 0.11336 # Dari URDF (hati-hati sumbu lokal) -> perlu transform ke frame sendi
+        l_forearm = 0.3922 # Panjang forearm
+        com_forearm_local_z = 0.0265 # Dari URDF
+        # Perhitungan manual ini SANGAT SENSITIF terhadap frame CoM dan panjang link
+        # Gunakan nilai dari datasheet UR jika memungkinkan untuk perhitungan akurat
+        
+        # Perkiraan kasar torsi pada joint 2 (shoulder_lift) saat lengan horizontal (q_test)
+        g = 9.81
+        # Torsi = (m_ua * dist_com_ua + m_fa * dist_fa + m_w1 * dist_w1 + ...) * g
+        # Ini hanya estimasi kasar karena CoM tidak tepat di tengah dan orientasi link berpengaruh
+        # Jarak horizontal dari sendi 2 ke CoM link berikutnya
+        dist_com_ua_horiz = l_upper_arm / 2 # Asumsi CoM di tengah
+        dist_link3_horiz = l_upper_arm
+        dist_link4_horiz = l_upper_arm + l_forearm / 2 # Asumsi CoM di tengah
+        dist_link5_horiz = l_upper_arm + l_forearm # Perkiraan ke wrist
+        # ... perhitungan bisa jadi sangat kompleks ...
+
+        # Pakai pendekatan lebih sederhana: Total massa dikali rata-rata lever arm
+        m_after_joint2 = m_upper_arm + m_forearm + m_wrist1 + m_wrist2 + m_wrist3
+        avg_lever_arm = (l_upper_arm + l_forearm) / 2 # Estimasi kasar
+        tau_joint2_expected_rough = m_after_joint2 * g * avg_lever_arm * np.cos(q_test[2]) # Faktor cos karena pose
+
+        print(f"(Rough Estimate) Expected Joint 2 torque around: {tau_joint2_expected_rough:.2f} Nm")
+        
+        # Ambil torsi aktual dari perhitungan
+        g_vec = robot.gravity_vector(q_test)
+        tau_joint2_actual = g_vec[1] # Indeks 1 untuk sendi ke-2 (shoulder_lift)
+        print(f"Calculated Joint 2 torque: {tau_joint2_actual:.2f} Nm")
+
+        # Perbandingan kasar
+        if tau_joint2_expected_rough > 1 and abs(tau_joint2_actual - tau_joint2_expected_rough) / abs(tau_joint2_expected_rough) > 0.3: # Toleransi 30%
+            print("\033[91m[WARNING] Perbedaan signifikan (>30%) antara torsi gravitasi estimasi dan kalkulasi!\033[0m")
+        elif tau_joint2_expected_rough <= 1 and abs(tau_joint2_actual - tau_joint2_expected_rough) > 0.5:
+             print("\033[91m[WARNING] Perbedaan signifikan (>0.5 Nm) antara torsi gravitasi estimasi dan kalkulasi!\033[0m")
+        else:
+             print("-> Perbedaan torsi gravitasi terlihat wajar (dalam batas estimasi kasar).")
+
+    except Exception as e:
+        print(f"  Error comparing gravity torque: {e}")
+    # === AKHIR STEP 1.3 ===
 
 
 if __name__ == "__main__":

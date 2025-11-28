@@ -1,0 +1,308 @@
+% Template skripsi FTMM Unair V1 2025
+% Dibuat oleh Rizki Putra Prastio berdasarkan pedoman skripsi.
+% Anda dapat mengubah dokumen ini sesuai dengan panduan yang berlaku. Anda juga diizinkan untuk mengganti, menambah, atau mengurangi package
+% yang digunakan jika memang diperlukan.
+% Segala bentuk pertanyaan terkait dokumen ini dapat dikirimkan melalui r.p.prastio@ftmm.unair.ac.id atau rpprastio@gmail.com.
+% Atau jika anda telah memahami cara menulis dengan LaTeX, anda diizinkan untuk mengedit.
+% Kelas Dokumen dengan ukuran huruf 12pt, format buku satu sisi (Tidak bolak balik).
+\documentclass[12pt,oneside]{book}
+\usepackage[table]{xcolor}
+\usepackage{amsmath,amsthm,amssymb,amstext,amsfonts}
+\usepackage{lipsum}
+\usepackage{enumitem}
+\usepackage{amscd}
+\usepackage{graphics}
+\usepackage{layout}
+\usepackage{graphicx}
+\usepackage{makeidx}
+\usepackage{listings}
+\usepackage{subcaption}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{float}
+\usepackage{units}
+\usepackage{calc}
+\usepackage{newfloat}
+\usepackage{adjustbox}
+\usepackage{setspace}
+\usepackage{mathtools}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{pdflscape}
+\usepackage{afterpage}	
+\usepackage{titlesec}
+\usepackage{etoolbox,tocloft}
+\usepackage{xr}
+\usepackage[style=apa, backend=biber]{biblatex}
+
+\addbibresource{new_ref.bib}
+\DeclareLanguageMapping{english}{english-apa}
+%\renewcommand*{\nameyeardelim}{\addcomma\space}
+\DefineBibliographyStrings{english}{
+	and = {dan},
+	andothers = {dkk.,}
+}
+
+
+\usepackage{indentfirst}
+\usepackage{setspace}
+\usepackage{textcomp,geometry}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{pdfpages}
+\usepackage{upgreek}
+\usepackage{chngcntr}
+\usepackage[labelsep=space, skip=2pt]{caption}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+
+\usepackage{svg}
+\usepackage{longtable}
+
+
+\usepackage[bookmarks, pdftitle={Skripsi}, pdfauthor={Rizki Putra Prastio}, bookmarksnumbered=false,hypertexnames=false, colorlinks=true, unicode, linkcolor=black, citecolor=black, urlcolor=black]{hyperref}
+
+
+\DeclareFloatingEnvironment[
+    fileext=lod,
+    listname={Daftar Kode},
+    name=Kode,
+    placement=!htbp,
+]{kode}
+
+\setlist[enumerate]{labelsep=0.1em}  % adjust spacing here
+
+\makeatletter
+\patchcmd{\@makecaption}
+  {\vskip\abovecaptionskip}
+  {\vspace{6pt}} % or \vspace{0pt}, tune this as needed
+  {}{}
+\patchcmd{\@makecaption}
+  {\vskip\belowcaptionskip}
+  {} % remove below caption space
+  {}{}
+\makeatother
+
+\lstset{
+language=tcl,
+basicstyle=\normalfont\sffamily,
+numbers=left,
+numberstyle=\normalfont,
+frame=tb,
+columns=fullflexible,
+showstringspaces=false,
+xleftmargin=1.5em
+}
+
+\definecolor{LightCyan}{rgb}{0.88,1,1}
+\definecolor{Gray}{gray}{0.9}
+\definecolor{Warnaku}{rgb}{0.7,0.45,0.32}
+\definecolor{Warnaku2}{RGB}{50,135,100}
+
+\captionsetup[table]{justification=raggedright, singlelinecheck=false}
+\captionsetup[lstlisting]{%  
+  font=small,      % ukuran 10pt
+  labelfont=normal,      % bold label "Listing"
+  singlelinecheck=false, % allow left alignment
+  justification=raggedright % align to the left
+}
+
+\captionsetup[figure]{
+  font={normalsize,stretch=1.25}
+}
+
+\hyphenation{
+	meng-im-ple-men-ta-si-kan
+	ko-la-bo-ra-tif
+	men-de-mons-tra-si-kan
+	me-ma-da-i
+	pe-ru-ba-han
+	ke-se-la-ma-tan
+	pro-duk-ti-vi-tas
+	ber-lang-sung
+	ke-mam-puan-nya
+	Mes-ki-pun
+	mem-bu-at-nya
+	mem-per-tim-bang-kan
+	meng-in-ter-ven-si
+	mo-di-fi-ka-si
+	me-na-war-kan
+	ma-ni-pu-la-si
+	al-go-rit-ma
+}
+
+%============================================================================
+\makeindex
+\geometry{a4paper,hmargin={4cm,3cm},vmargin=3cm}
+\include{hypen}
+% Daftar pemenggalan suku kata dan istilah dalam LaTeX
+
+\include{hype.indonesia}
+
+% Perintah untuk membuat perintah/variabel baru. 
+\newcommand{\var}[2]{\newcommand{#1}{#2}}
+% 
+% Perintah untuk membuat perintah/variabel baru. Teks yang ditulis dalam 
+% perintah ini akan diformat ulang menggunakan huruf kapital. 
+\newcommand{\Var}[2]{\newcommand{#1}{\uppercase{#2}}}
+
+% Gambar
+\newcommand{\figref}[1]{Gambar~\ref{#1}}
+% Persamaaan
+\newcommand{\qref}[1]{Persamaan~\ref{#1}}
+
+	\renewcommand{\eqref}[1]{persamaan~\ref{#1}}
+% Tabel
+\newcommand{\tabref}[1]{Tabel~\ref{#1}}
+%Lampiran
+
+
+%============================================================================
+\renewcommand{\baselinestretch}{1.5}
+\renewcommand{\chaptername}{BAB}
+\renewcommand{\listfigurename}{\begin{center}\bfseries\fontsize{12}{12}\selectfont DAFTAR GAMBAR\end{center}}
+\renewcommand{\listtablename}{\begin{center}\bfseries\fontsize{12}{12}\selectfont DAFTAR TABEL\end{center}}
+\renewcommand{\contentsname}{\begin{center}\bfseries\fontsize{12}{12}\selectfont DAFTAR ISI\end{center}}
+\renewcommand{\bibname}{DAFTAR PUSTAKA}
+\renewcommand{\figurename}{Gambar}
+\renewcommand{\tablename}{Tabel}
+\renewcommand{\lstlistingname}{Kode}
+
+
+
+\counterwithin{kode}{chapter}
+
+\renewcommand{\thechapter}{\Roman{chapter}}
+\renewcommand{\theequation}{\arabic{chapter}.\arabic{equation}} % Format penomoran persamaan. Angka arab bab+angka arab persamaan
+\renewcommand{\thefigure}{\arabic{chapter}.\arabic{figure}}% Format penomoran gambar. Angka arab bab+angka arab persamaan
+\renewcommand{\thetable}{\arabic{chapter}.\arabic{table}}% Format penomoran tabel. Angka arab bab+angka arab persamaan
+\renewcommand\thesection{\arabic{chapter}.\arabic{section}}
+\renewcommand{\thekode}{\arabic{chapter}.\arabic{kode}}
+\titlespacing*{\chapter}{0pt}{-25pt}{12pt}
+%\titleformat{\chapter}{\normalfont\bfseries\centering}
+%    {\fontsize{12pt}{12pt}\chaptertitlename\ \thechapter}{12pt}{\Large}
+
+\pagestyle{plain} 
+
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\centering}
+  {BAB~\thechapter}{0pt}{\bfseries}
+  {}
+
+\setlength{\abovecaptionskip}{6pt}   
+\setlength{\belowcaptionskip}{3pt}  
+
+% Mengatur lebar spasi antara text dan objek float
+\setlength{\intextsep}{4pt plus 2pt minus 2pt}     % Spasi atas bawah ketika menjadi bagian dari teks. Ini untuk setting h
+\setlength{\textfloatsep}{3pt plus 2pt minus 2pt}  % Spasi atas bawa ketika jadi objek tersendiri, Ini untuk t dan b
+\setlength{\floatsep}{6pt plus 2pt minus 2pt} % Spasi antara gambar dan tabel.
+
+\renewcommand{\arraystretch}{1.5} % Setting spasi pada tabel
+  
+
+\makeatletter
+\renewcommand{\cftchappresnum}{BAB~} % Menambahkan teks "BAB"x	
+\renewcommand{\cftchapnumwidth}{4em}     % Pengaturan jarak
+\renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}  % Menambah titik-titik lurus nomor halaman
+
+% Bagian ini mengatur section pada daftar isi agar rata kiri
+\setlength{\cftsecindent}{0pt}
+\setlength{\cftsubsecindent}{0pt} % indentasi subsection pada daftar isi
+\setlength{\cftsecnumwidth}{2.0em}  % Mengatur jarak nomor dengan teks pada daftar isi
+
+% Mengatur indentasi nomor gambar dan tabel
+\renewcommand{\cftfigpresnum}{\hfill}
+\renewcommand{\cfttabpresnum}{\hfill}
+\renewcommand{\cftfigaftersnum}{\hspace{1em}}
+\renewcommand{\cfttabaftersnum}{\hspace{1em}}
+\setlength{\cftfigindent}{0pt}
+\setlength{\cfttabindent}{0pt}
+\setlength{\cftfignumwidth}{2 em}  % Adjust width as needed
+\setlength{\cfttabnumwidth}{2 em}  % Adjust width as needed
+\makeatother
+%==============================================================
+\captionsetup[kode]{  
+    labelfont=normalfont,
+    textfont=normalfont,
+    justification=raggedright,
+    singlelinecheck=false,
+    font=small,
+    position=above
+}
+
+\titleformat{\section}
+  {\normalfont\bfseries\fontsize{12}{12}\selectfont}
+  {\thesection}
+  {1em}
+  {}
+
+\titleformat{\subsection}
+  {\normalfont\bfseries\fontsize{12}{12}\selectfont}
+  {\thesubsection}
+  {1em}
+  {}
+  
+\titlespacing*{\section}
+  {0pt}   % No left indent
+  {6pt}   % Before
+  {0pt}   % After
+
+\titlespacing*{\subsection}
+  {0pt}   % No left indent
+  {6pt}   % Before
+  {0pt}   % After
+  
+\begin{document}
+\frontmatter
+\include{frontmatter/cover}
+\setcounter{page}{2}
+\include{frontmatter/pengesahan}
+\include{frontmatter/orisinalitas}
+\include{frontmatter/prakata}
+\include{frontmatter/pedoman}
+\include{frontmatter/abstrak}
+\include{frontmatter/abstract}
+
+\begingroup
+\singlespacing
+%\phantomsection
+%\addcontentsline {toc}{chapter}{HALAMAN PENGESAHAN}
+%\markboth{HALAMAN PENGESAHAN}{\textbf{HALAMAN PENGESAHAN}}
+%\clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{DAFTAR ISI} \tableofcontents
+\markboth{DAFTAR ISI}{\textbf{DAFTAR ISI}}
+\clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{DAFTAR GAMBAR} \listoffigures
+\markboth{DAFTAR GAMBAR}{\textbf{DAFTAR GAMBAR}}
+\clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{DAFTAR TABEL} \listoftables
+\markboth{DAFTAR TABEL}{\textbf{DAFTAR TABEL}}
+%\include{frontmatter/singkatan}
+%\include{frontmatter/simbol}
+\endgroup
+
+\mainmatter
+\include{mainmatter/bab1}
+\include{mainmatter/bab2}
+\include{mainmatter/bab3}
+\include{mainmatter/bab4}
+\include{mainmatter/bab5}
+
+
+\backmatter
+\phantomsection
+\addcontentsline{toc}{chapter}{DAFTAR PUSTAKA}
+
+\printbibliography[title={DAFTAR PUSTAKA}]
+\include{backmatter/lampiranA}
+\include{backmatter/lampiranB}
+\include{backmatter/lampiranC}
+\include{backmatter/lampiranD}
+\include{backmatter/lampiranE}
+\include{backmatter/lampiranF}
+\end{document}

@@ -4,13 +4,13 @@ We consider a cluttered tabletop environment with many randomized obstacles,
 each represented as a sphere. We then enforce collision avoidance with 
 all of the obstacles, and all of the collision bodies on the robot
 
-There are likely "smarter" ways to filter out the collision pairs that are
-least likely to cause a collision, but for now, this test just tries to see
-how much we can scale up the collision avoidance while retaining real-time
-performance.
+Tahap 2: Tuning Stabilitas & Smoothness (PositionTaskTorqueController)
+- Menggunakan kontrol posisi 3D (x,y,z) agar memiliki nullspace untuk postur.
+- Menggunakan parameter gain yang disesuaikan untuk kehalusan gerak.
 """
 
 import argparse
+import time 
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,11 +19,14 @@ import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from cbfpy import CBF
-from oscbf.core.manipulator import Manipulator, load_panda
-from oscbf.core.manipulation_env import FrankaTorqueControlEnv, FrankaVelocityControlEnv
+from oscbf.core.manipulator import Manipulator, load_mycobot
+from oscbf.core.manipulation_env import MyCobotTorqueControlEnv, MyCobotVelocityControlEnv
 from oscbf.core.oscbf_configs import OSCBFTorqueConfig, OSCBFVelocityConfig
-from oscbf.core.controllers import PoseTaskTorqueController, PoseTaskVelocityController
-from oscbf.core.franka_collision_model import franka_collision_data
+# PENTING: Gunakan PositionTask (3D) bukan PoseTask (6D) untuk stabilitas robot 6-DOF
+from oscbf.core.controllers import PositionTaskTorqueController, PositionTaskVelocityController
+from oscbf.utils.trajectory import SinusoidalTaskTrajectory
+from oscbf.core.myco_collision_model import mycobot_collision_data
+from oscbf.core.myco_collision_model import print_collision_model_info
 
 
 np.random.seed(0)
@@ -42,6 +45,9 @@ class CollisionsConfig(OSCBFTorqueConfig):
         self.z_min = z_min
         self.collision_positions = np.atleast_2d(collision_positions)
         self.collision_radii = np.ravel(collision_radii)
+
+        self.singularity_tol = 1e-4
+
         super().__init__(robot)
 
     def h_2(self, z, **kwargs):
@@ -65,13 +71,16 @@ class CollisionsConfig(OSCBFTorqueConfig):
             robot_collision_positions[:, 2] - self.z_min - robot_collision_radii.ravel()
         )
 
-        return jnp.concatenate([h_collision, h_table])
+        manipulability_index = self.robot.manipulability(q)
+        h_singularity = jnp.array([manipulability_index - self.singularity_tol])
+
+        return jnp.concatenate([h_collision, h_table, h_singularity])
 
     def alpha(self, h):
-        return 10.0 * h
+        return 25.0 * h
 
     def alpha_2(self, h_2):
-        return 10.0 * h_2
+        return 25.0 * h_2
 
 
 @jax.tree_util.register_static
@@ -113,90 +122,72 @@ class CollisionsVelocityConfig(OSCBFVelocityConfig):
         return jnp.concatenate([h_collision, h_table])
 
     def alpha(self, h):
-        return 10.0 * h
+        return 25.0 * h
 
     def alpha_2(self, h_2):
-        return 10.0 * h_2
+        return 25.0 * h_2
 
 
+# FUNGSI BARU: Menggunakan PositionTaskTorqueController (3D)
 # @partial(jax.jit, static_argnums=(0, 1, 2))
 def compute_torque_control(
     robot: Manipulator,
-    osc_controller: PoseTaskTorqueController,
+    osc_controller: PositionTaskTorqueController, # Tipe kontroler diubah
     cbf: CBF,
+    compensate_centrifugal_coriolis:bool,
     z: ArrayLike,
     z_ee_des: ArrayLike,
+    q_des_nullspace: ArrayLike # Target postur untuk nullspace
 ):
     q = z[: robot.num_joints]
     qdot = z[robot.num_joints :]
     M, M_inv, g, c, J, ee_tmat = robot.torque_control_matrices(q, qdot)
-    # Set nullspace desired joint position
-    nullspace_posture_goal = jnp.array(
-        [
-            0.0,
-            -jnp.pi / 6,
-            0.0,
-            -3 * jnp.pi / 4,
-            0.0,
-            5 * jnp.pi / 9,
-            0.0,
-        ]
-    )
+    
+    # Ambil Jacobian Linear (3 baris pertama) untuk Position Control
+    Jv = J[:3, :] 
+    
+    if not compensate_centrifugal_coriolis:
+        c = jnp.zeros(robot.num_joints)
 
-    # Compute nominal control
+    # u_nom untuk Position Control (3D)
+    # Ini memberikan kebebasan pada orientasi (nullspace) untuk menghindari singularitas
     u_nom = osc_controller(
         q,
         qdot,
         pos=ee_tmat[:3, 3],
-        rot=ee_tmat[:3, :3],
+        # rot tidak diperlukan untuk position control
         des_pos=z_ee_des[:3],
-        des_rot=jnp.reshape(z_ee_des[3:12], (3, 3)),
         des_vel=z_ee_des[12:15],
-        des_omega=z_ee_des[15:18],
         des_accel=jnp.zeros(3),
-        des_alpha=jnp.zeros(3),
-        des_q=nullspace_posture_goal,
+        des_q=q_des_nullspace, # Postur yang diinginkan (misal: tegak)
         des_qdot=jnp.zeros(robot.num_joints),
-        J=J,
+        Jv=Jv, # Gunakan Jv (3xN), bukan J (6xN)
         M=M,
         M_inv=M_inv,
         g=g,
         c=c,
     )
-    # Apply the CBF safety filter
     return cbf.safety_filter(z, u_nom)
 
 
 # @partial(jax.jit, static_argnums=(0, 1, 2))
 def compute_velocity_control(
     robot: Manipulator,
-    osc_controller: PoseTaskVelocityController,
+    osc_controller: PositionTaskVelocityController,
     cbf: CBF,
     z: ArrayLike,
     z_ee_des: ArrayLike,
 ):
     q = z[: robot.num_joints]
     M_inv, J, ee_tmat = robot.dynamically_consistent_velocity_control_matrices(q)
+    Jv = J[:3, :] # Linear Jacobian
     pos = ee_tmat[:3, 3]
-    rot = ee_tmat[:3, :3]
-    des_pos = z_ee_des[:3]
-    des_rot = jnp.reshape(z_ee_des[3:12], (3, 3))
-    des_vel = z_ee_des[12:15]
-    des_omega = z_ee_des[15:18]
-    # Set nullspace desired joint position
-    des_q = jnp.array(
-        [
-            0.0,
-            -jnp.pi / 6,
-            0.0,
-            -3 * jnp.pi / 4,
-            0.0,
-            5 * jnp.pi / 9,
-            0.0,
-        ]
-    )
+    
+    # Dummy nullspace target
+    des_q = jnp.zeros(robot.num_joints)
+    
     u_nom = osc_controller(
-        q, pos, rot, des_pos, des_rot, des_vel, des_omega, des_q, J, M_inv
+        q, pos, z_ee_des[:3], z_ee_des[12:15], des_q, Jv, M_inv
     )
     return cbf.safety_filter(q, u_nom)
 
@@ -204,8 +195,11 @@ def compute_velocity_control(
 def main(control_method="torque", num_bodies=25):
     assert control_method in ["torque", "velocity"]
 
-    robot = load_panda()
+    robot = load_mycobot()
     z_min = 0.1
+
+    time_log = []
+    h_log = []
 
     max_num_bodies = 50
 
@@ -226,11 +220,18 @@ def main(control_method="torque", num_bodies=25):
     )
     velocity_cbf = CBF.from_config(velocity_config)
 
-    timestep = 1 / 240  #  1 / 1000
+    # --- SETTING POSISI AWAL TEGAK ---
+    # Posisi ini jauh dari singularitas lipatan, bagus untuk start
+    mycobot_q_init = (0, 0, 0, 0, 0, 0) 
+    # ---------------------------------
+
+    timestep = 1 / 240
     bg_color = (1, 1, 1)
+    
     if control_method == "torque":
-        env = FrankaTorqueControlEnv(
-            real_time=True,
+        env = MyCobotTorqueControlEnv(
+            q_init=mycobot_q_init,
+            real_time=False,
             bg_color=bg_color,
             load_floor=False,
             timestep=timestep,
@@ -238,8 +239,8 @@ def main(control_method="torque", num_bodies=25):
             load_table=True,
         )
     else:
-        env = FrankaVelocityControlEnv(
-            real_time=True,
+        env = MyCobotVelocityControlEnv(
+            real_time=False,
             bg_color=bg_color,
             load_floor=False,
             timestep=timestep,
@@ -254,58 +255,46 @@ def main(control_method="torque", num_bodies=25):
         cameraTargetPosition=(0.20, 0.07, -0.09),
     )
 
-    robot_sphere_ids = []
-    try:
-        all_radii = np.concatenate(franka_collision_data['radii'])
-        print(f"Membuat visualisasi untuk {len(all_radii)} bola tabrakan robot...")
-
-        for radius in all_radii:
-            vis_shape_id = env.client.createVisualShape(
-                shapeType=env.client.GEOM_SPHERE,
-                radius=radius,
-                rgbaColor=[0.1, 1.0, 0.1, 0.3] # Hijau transparan
-            )
-            body_id = env.client.createMultiBody(
-                baseVisualShapeIndex=vis_shape_id,
-                baseCollisionShapeIndex=-1, # Tidak perlu deteksi tabrakan (hanya visual)
-                basePosition=[0, 0, -1] # Mulai di suatu tempat (di bawah lantai)
-            )
-            robot_sphere_ids.append(body_id)
-            
-    except ImportError:
-        print("PERINGATAN: Gagal memuat mycobot_collision_data. Bola pelindung robot tidak akan ditampilkan.")
-
-    kp_pos = 50.0
+    # --- TUNING PARAMETER (SMOOTH & STABIL) ---
+    # Parameter yang Anda request:
+    kp_pos = 40.0   # Cukup kuat untuk bergerak
+    kd_pos = 10.0   # Peredam
+    
+    # Parameter Rotasi (Tidak dipakai di PositionTask, tapi didefinisikan saja)
     kp_rot = 20.0
-    kd_pos = 20.0
-    kd_rot = 10.0
-    kp_joint = 10.0
-    kd_joint = 5.0
-    osc_torque_controller = PoseTaskTorqueController(
+    kd_rot = 5.0
+    
+    # Parameter Nullspace (PENTING untuk menjaga postur)
+    kp_joint = 5.0  # Kekakuan untuk kembali ke posisi tegak
+    kd_joint = 1.5  # Peredam getaran tubuh
+    
+    # Gunakan PositionTaskTorqueController (3D Task)
+    # Ini kunci untuk menghindari guncangan pada robot 6-DOF
+    osc_torque_controller = PositionTaskTorqueController(
         n_joints=robot.num_joints,
-        kp_task=np.concatenate([kp_pos * np.ones(3), kp_rot * np.ones(3)]),
-        kd_task=np.concatenate([kd_pos * np.ones(3), kd_rot * np.ones(3)]),
+        kp_task=kp_pos, # Scalar untuk 3D (posisi)
+        kd_task=kd_pos, # Scalar untuk 3D (posisi)
         kp_joint=kp_joint,
         kd_joint=kd_joint,
-        # Note: torque limits will be enforced via the QP. We'll set them to None here
-        # because we don't want to clip the values before the QP
         tau_min=None,
         tau_max=None,
     )
 
-    osc_velocity_controller = PoseTaskVelocityController(
+    osc_velocity_controller = PositionTaskVelocityController(
         n_joints=robot.num_joints,
-        kp_task=np.array([kp_pos, kp_pos, kp_pos, kp_rot, kp_rot, kp_rot]),
+        kp_task=kp_pos,
         kp_joint=kp_joint,
-        # Note: velocity limits will be enforced via the QP
         qdot_min=None,
         qdot_max=None,
     )
 
+    # Target Nullspace: Usahakan tetap tegak/netral
+    q_des_nullspace = jnp.array(mycobot_q_init)
+
     @jax.jit
     def compute_torque_control_jit(z, z_ee_des):
         return compute_torque_control(
-            robot, osc_torque_controller, torque_cbf, z, z_ee_des
+            robot, osc_torque_controller, torque_cbf, True, z, z_ee_des, q_des_nullspace
         )
 
     @jax.jit
@@ -321,30 +310,45 @@ def main(control_method="torque", num_bodies=25):
     else:
         raise ValueError(f"Invalid control method: {control_method}")
 
-    time_log, h_log, torque_log, velocity_log, position_log = [], [], [], [], []
+    last_print_time = 0
+    time_log, h_log, torque_log, velocity_log, position_log, singularity_log = [], [], [], [], [], []
+    
+    # --- VISUALISASI AWAL & PAUSE UNTUK TUNING ---
+    print("\n" + "="*60)
+    print("MODE TUNING MYCOBOT (Position Control)")
+    print("------------------------------------------------------------")
+    print("1. Robot akan spawn di posisi tegak (0,0,0,0,0,0).")
+    print("2. Environment otomatis menampilkan bola hijau (Collision Spheres).")
+    print("3. Cek apakah bola hijau terlalu besar/jauh dari body robot.")
+    print("   -> Jika ya, edit 'radii' di file 'myco_collision_model.py'.")
+    print("------------------------------------------------------------")
+    
+    input("Tekan [ENTER] di terminal untuk memulai simulasi...")
+    print("Simulasi berjalan...")
+    print("="*60 + "\n")
+
     try:
-        # simulation_duration = 15
-        # while env.t < simulation_duration:
         while True:
             q_qdot = env.get_joint_state()
             z_zdot_ee_des = env.get_desired_ee_state()
+            
             tau = compute_control(q_qdot, z_zdot_ee_des)
             env.apply_control(tau)
             env.step()
-            if robot_sphere_ids: # Hanya jika bola berhasil dibuat
-                q = q_qdot[:robot.num_joints]
-                # Dapatkan posisi bola tabrakan robot saat ini di koordinat dunia
-                robot_collision_data_world = robot.link_collision_data(q)
-                robot_sphere_positions = robot_collision_data_world[:, :3]
 
-                # Perbarui posisi setiap bola visual satu per satu
-                if len(robot_sphere_ids) == len(robot_sphere_positions):
-                    for i in range(len(robot_sphere_ids)):
-                        env.client.resetBasePositionAndOrientation(
-                            bodyUniqueId=robot_sphere_ids[i],
-                            posObj=robot_sphere_positions[i],
-                            ornObj=[0, 0, 0, 1] # Orientasi tidak penting untuk bola
-                        )
+            if (env.t - last_print_time) >= 0.5:
+                q_aktual = q_qdot[:robot.num_joints]
+                ee_pos_aktual = robot.ee_position(q_aktual)
+                posisi_bola_merah = z_zdot_ee_des[:3]
+                selisih = np.linalg.norm(posisi_bola_merah - ee_pos_aktual)
+
+                print(f"--- Waktu: {env.t:.2f} s ---")
+                print(f"Posisi End-Effector:   {np.round(ee_pos_aktual, 2)}")
+                print(f"Posisi Bola Merah:     {np.round(posisi_bola_merah, 2)}")
+                print(f"Selisih Jarak:         {selisih:.3f} m")
+                print("-" * 20)
+
+                last_print_time = env.t
 
             time_log.append(env.t)
 
@@ -356,57 +360,64 @@ def main(control_method="torque", num_bodies=25):
             if control_method == "torque":
                 h_values = torque_config.h_2(q_qdot)
                 torque_log.append(tau)
+                singularity_value = h_values[-1] + torque_config.singularity_tol
+                singularity_log.append(singularity_value)
             else: 
                 h_values = velocity_config.h_1(q_qdot)
                 torque_log.append(np.zeros_like(q))
+                singularity_log.append(0)
             
             h_log.append(h_values)
 
     except KeyboardInterrupt:
-        # Tangani jika pengguna menekan Ctrl+C
         print("\nSimulasi dihentikan oleh pengguna.")
-
-    except Exception as e:
-        print(f"\n!!! TERJADI ERROR YANG MENGHENTIKAN SIMULASI !!!")
-        print(f"Jenis Error: {type(e).__name__}")
-        print(f"Pesan Error: {e}")
-        import traceback
-        traceback.print_exc()
 
     finally:
         print("Simulation finished. Plotting data...")
-        # Konversi list ke numpy array
-        h_log = np.array(h_log)
-        torque_log = np.array(torque_log)
-        position_log = np.array(position_log)
-        velocity_log = np.array(velocity_log)
+        min_len = min(len(time_log), len(h_log), len(torque_log), len(position_log), len(velocity_log), len(singularity_log))
+        
+        time_log = time_log[:min_len]
+        h_log = np.array(h_log[:min_len])
+        torque_log = np.array(torque_log[:min_len])
+        position_log = np.array(position_log[:min_len])
+        velocity_log = np.array(velocity_log[:min_len])
+        singularity_log = np.array(singularity_log[:min_len])
 
-        # Buat 4 subplot
-        fig, axs = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
-        fig.suptitle('Analisis Simulasi Robot Franka Panda', fontsize=16)
+        if 'env' in locals() and hasattr(env, 'client'):
+            try:
+                env.client.disconnect()
+                print("PyBullet disconnected.")
+            except Exception as e:
+                print(f"Error disconnecting PyBullet: {e}")
 
-        # Plot 1: Evolusi Batasan Keamanan (h(z))
-        # constraint_labels = ["X max", "Y max", "Z max", "X min", "Y min", "Z min"]
-        # for i in range(h_log.shape[1]):
-        #     axs[0].plot(time_log, h_log[:, i], label=constraint_labels[i])
-        for i in range(h_log.shape[1]):
-            axs[0].plot(time_log, h_log[:, i])
-        axs[0].plot([], [], label='Batasan Tabrakan')
+        fig, axs = plt.subplots(5, 1, figsize=(12, 20), sharex=True)
+        fig.suptitle('Analisis Simulasi Robot Mycobot 280 (Stabilized)', fontsize=16)
+
+        # Plot H(z)
+        if len(time_log) > 0:
+            for i in range(h_log.shape[1]):
+                if i == 0:
+                    axs[0].plot(time_log, h_log[:, i], alpha=0.7, label=f'Batasan Tabrakan ({h_log.shape[1]} total)')
+                else:
+                    axs[0].plot(time_log, h_log[:, i], alpha=0.7)
+
         axs[0].axhline(0, color='r', linestyle='--', label='Batas Aman (h=0)')
         axs[0].set_title('Evolusi Batasan Keamanan (h(z))')
         axs[0].set_ylabel('Nilai h(z)')
         axs[0].grid(True)
         axs[0].legend(fontsize='small')
 
-        # Plot 2: Torsi Sendi (Torque)
-        for i in range(torque_log.shape[1]):
-            axs[1].plot(time_log, torque_log[:, i], label=f'Sendi {i+1}')
+        # Plot Torsi
+        start_index = 10 
+        if len(time_log) > start_index:
+            for i in range(torque_log.shape[1]):
+                axs[1].plot(time_log[start_index:], torque_log[start_index:, i], label=f'Sendi {i+1}')
         axs[1].set_title('Perintah Torsi Aman (Γ*)')
         axs[1].set_ylabel('Torsi (Nm)')
         axs[1].grid(True)
         axs[1].legend(fontsize='small')
 
-        # Plot 3: Kecepatan Sendi (Velocity)
+        # Plot Kecepatan
         for i in range(velocity_log.shape[1]):
             axs[2].plot(time_log, velocity_log[:, i], label=f'Sendi {i+1}')
         axs[2].set_title('Kecepatan Sendi (q_dot)')
@@ -414,7 +425,7 @@ def main(control_method="torque", num_bodies=25):
         axs[2].grid(True)
         axs[2].legend(fontsize='small')
 
-        # Plot 4: Posisi Sendi (Position)
+        # Plot Posisi
         for i in range(position_log.shape[1]):
             axs[3].plot(time_log, position_log[:, i], label=f'Sendi {i+1}')
         axs[3].set_title('Posisi Sendi (q)')
@@ -422,6 +433,16 @@ def main(control_method="torque", num_bodies=25):
         axs[3].set_xlabel('Waktu (s)')
         axs[3].grid(True)
         axs[3].legend(fontsize='small')
+
+        # Plot Singularitas
+        if len(time_log) > 0:
+            axs[4].plot(time_log, singularity_log, label='Manipulability Index (μ)', color='purple')
+            axs[4].axhline(torque_config.singularity_tol, color='r', linestyle='--', label=f'Batas Aman (μ={torque_config.singularity_tol})')
+        axs[4].set_title('Evolusi Batasan Singularitas (Manipulability)')
+        axs[4].set_ylabel('Nilai Manipulabilitas (μ)')
+        axs[4].set_yscale('log')
+        axs[4].grid(True)
+        axs[4].legend(fontsize='small')
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         plt.show()
